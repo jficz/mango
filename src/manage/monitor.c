@@ -82,6 +82,107 @@ uint32_t get_monitor_active_tagset(const Monitor *m) {
 	return m->tagset[m->seltags];
 }
 
+/* Tags shown on monitors other than m (with the single tag set enabled). */
+uint32_t get_other_used_tagset(const Monitor *m) {
+	Monitor *tm;
+	uint32_t used = 0;
+
+	wl_list_for_each(tm, &server.monitors, link) {
+		if (tm == m || tm->isoverview || !tm->wlr_output->enabled ||
+			tm->iscleanuping)
+			continue;
+		used |= tm->tagset[tm->seltags];
+	}
+	return used;
+}
+
+/* First tag bit (1..tag_num) not currently displayed on any monitor. */
+uint32_t get_unused_tag(void) {
+	Monitor *m;
+	uint32_t used = 0;
+
+	wl_list_for_each(m, &server.monitors, link) {
+		if (m->isoverview || !m->wlr_output->enabled || m->iscleanuping)
+			continue;
+		used |= m->tagset[m->seltags] & TAGMASK;
+	}
+
+	for (size_t i = 0; i < (size_t)config.tag_num; i++) {
+		if (!((used & TAGMASK) & (1u << i)))
+			return 1u << i;
+	}
+	return 1;
+}
+
+/* First enabled monitor (excluding `exclude`) displaying any of tags. */
+Monitor *monitor_showing_tags(uint32_t tags, const Monitor *exclude) {
+	Monitor *tm;
+
+	wl_list_for_each(tm, &server.monitors, link) {
+		if (tm == exclude || tm->isoverview || !tm->wlr_output->enabled ||
+			tm->iscleanuping)
+			continue;
+		if (tm->tagset[tm->seltags] & tags)
+			return tm;
+	}
+	return NULL;
+}
+
+/* Give the tag set newtags to monitor m, taking it away from whichever other
+ * monitor currently displays it (single tag set). */
+void swap_tags(Monitor *m, uint32_t newtags) {
+	Monitor *tm;
+
+	while ((tm = monitor_showing_tags(newtags, m))) {
+		tm->seltags ^= 1;
+		tm->tagset[tm->seltags] = get_unused_tag();
+		tm->pertag->curtag = get_tags_first_tag_num(tm->tagset[tm->seltags]);
+		attach_clients(tm);
+		arrange(tm, false, false);
+	}
+}
+
+/* Re-attach clients to monitor m after its tagset changed (single tag set).
+ * Clients viewing m's tags move to m; tags also displayed on other monitors
+ * are stripped from them so no tag is ever shown twice. */
+void attach_clients(Monitor *m) {
+	Monitor *tm;
+	Client *c;
+	uint32_t utags;
+	int32_t restrip = 0;
+
+	if (!config.single_tagset || !m || m->isoverview || m->iscleanuping ||
+		!m->wlr_output->enabled)
+		return;
+
+	utags = get_other_used_tagset(m);
+
+	wl_list_for_each(c, &server.clients, link) {
+		/* special-workspace windows stay on their own monitor */
+		if (!SVISIBLEON(c, m) || (c->tags & TAG0_MASK))
+			continue;
+		// restrict the client to the tags this monitor displays
+		if (c->tags & utags) {
+			c->tags &= m->tagset[m->seltags];
+			if (!c->tags)
+				c->tags = m->tagset[m->seltags];
+			restrip = 1;
+		}
+		if (c->mon != m) {
+			if (m->sel == c)
+				m->sel = NULL;
+			c->mon = m;
+		}
+	}
+
+	if (restrip) {
+		wl_list_for_each(tm, &server.monitors, link) {
+			if (tm != m && !tm->isoverview && tm->wlr_output->enabled)
+				arrange(tm, false, false);
+		}
+	}
+}
+
 Monitor *monitor_from_direction(enum wlr_direction dir) {
 	struct wlr_output *next;
 	if (!wlr_output_layout_get(server.output_layout,
@@ -799,6 +900,10 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 		server.chvt_backup_tag = 0;
 		memset(server.chvt_backup_monitor_name, 0,
 			   sizeof(server.chvt_backup_monitor_name));
+	} else if (config.single_tagset) {
+		m->tagset[0] = m->tagset[1] = get_unused_tag();
+		m->pertag->curtag = m->pertag->prevtag =
+			get_tags_first_tag_num(m->tagset[m->seltags]);
 	} else {
 		m->tagset[0] = m->tagset[1] = 1;
 		m->pertag->curtag = m->pertag->prevtag = 1;
@@ -958,6 +1063,21 @@ void monitor_close(Monitor *m) {
 	if (server.selected_monitor) {
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		printstatus(IPC_WATCH_ARRANGGE);
+	}
+
+	if (config.single_tagset) {
+		/* release the tags of the closed monitor and re-attach orphaned
+		 * clients to the monitors displaying their tags */
+		Monitor *tm;
+
+		m->tagset[0] = m->tagset[1] = 0;
+
+		wl_list_for_each(tm, &server.monitors, link) {
+			if (tm->isoverview || !tm->wlr_output->enabled)
+				continue;
+			attach_clients(tm);
+			arrange(tm, false, false);
+		}
 	}
 }
 
@@ -1130,6 +1250,13 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 
 		/* Calculate the effective monitor geometry to use for clients */
 		arrange_layers(m);
+
+		if (config.single_tagset && !m->isoverview) {
+			if (((m->tagset[0] | m->tagset[1]) & TAGMASK) == 0)
+				m->tagset[0] = m->tagset[1] = get_unused_tag();
+			attach_clients(m);
+		}
+
 		/* Don't move clients to the left output when plugging monitors */
 		arrange(m, false, false);
 		/* make sure fullscreen clients have the right size */

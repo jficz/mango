@@ -1435,6 +1435,7 @@ void client_apply_rules(Client *c) {
 	Monitor *m = NULL;
 	Client *fc = NULL;
 	Client *parent = NULL;
+	bool rule_tags = false;
 
 	if (!c)
 		return;
@@ -1476,6 +1477,7 @@ void client_apply_rules(Client *c) {
 		// // set tags
 		if (r->tags) {
 			newtags |= r->tags;
+			rule_tags = true;
 		} else if (parent) {
 			newtags = parent->tags;
 		}
@@ -1536,6 +1538,16 @@ void client_apply_rules(Client *c) {
 
 	if (mon)
 		set_size_per(mon, c);
+
+	/* With a single tag set, a rule-assigned tag takes precedence over the
+	 * monitor assignment: open the window on the monitor that currently
+	 * displays the tagged view. */
+	if (config.single_tagset && rule_tags && newtags &&
+		!(newtags & TAG0_MASK)) {
+		m = monitor_showing_tags(newtags, NULL);
+		if (m)
+			mon = m;
+	}
 
 	// if no geom rule hit and is normal winodw, use the center pos and record
 	// the hit size
@@ -2840,6 +2852,10 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 		want_animation = false;
 	}
 
+	if (config.single_tagset && !m->isoverview && (arg->ui & TAGMASK)) {
+		swap_tags(m, arg->ui & (TAGMASK | TAG0_MASK));
+	}
+
 	m->seltags ^= 1; /* toggle sel tagset */
 
 	if (arg->ui & (TAGMASK | TAG0_MASK)) {
@@ -2867,6 +2883,9 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 	}
 
 toggleseltags:
+
+	if (config.single_tagset)
+		attach_clients(m);
 
 	if (changefocus)
 		client_focus(client_focus_top(m), 1);
@@ -2943,9 +2962,35 @@ void show_hide_client(Client *c) {
 
 void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 	Monitor *oldmon = c->mon;
+	Monitor *dest = m;
+	Monitor *am;
+	uint32_t stripped;
 
 	if (oldmon == m)
 		return;
+
+	/* With a single tag set, clients follow the monitor displaying their
+	 * tags; move and strip tags that other monitors display. */
+	if (config.single_tagset && dest && !dest->isoverview &&
+		!client_is_parked(c) && !(c->tags & TAG0_MASK) &&
+		(c->isglobal || c->isunglobal || SVISIBLEON(c, dest))) {
+		am = monitor_showing_tags(c->tags, dest);
+
+		if (am) {
+			stripped = c->tags & ~am->tagset[am->seltags];
+			c->tags = stripped ? stripped : dest->tagset[dest->seltags];
+			dest = am;
+		} else if (c->mon && c->mon != dest &&
+				   !(c->tags & dest->tagset[dest->seltags])) {
+			c->tags = dest->tagset[dest->seltags];
+		}
+	}
+
+	if (oldmon == dest) {
+		if (focus && !client_is_x11_popup(c))
+			client_focus(client_focus_top(server.selected_monitor), 1);
+		return;
+	}
 
 	if (oldmon && oldmon->sel == c) {
 		oldmon->sel = NULL;
@@ -2955,7 +3000,7 @@ void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 		oldmon->prevsel = NULL;
 	}
 
-	c->mon = m;
+	c->mon = dest;
 
 	/* Scene graph sends surface leave/enter events on move and resize */
 	if (oldmon)
@@ -2964,12 +3009,12 @@ void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 	if (client_is_parked(c))
 		return;
 
-	if (m) {
+	if (dest) {
 		/* Make sure window actually overlaps with the monitor */
-		reset_foreign_tolevel(c, oldmon, m);
+		reset_foreign_tolevel(c, oldmon, dest);
 		resize(c, c->geom, 0);
-		client_reset_mon_tags(c, m, newtags);
-		check_match_tag_floating_rule(c, m);
+		client_reset_mon_tags(c, dest, newtags);
+		check_match_tag_floating_rule(c, dest);
 		client_set_floating(c, c->isfloating);
 		client_apply_fullscreen(c, c->isfullscreen,
 								true); /* This will call arrange(c->mon) */

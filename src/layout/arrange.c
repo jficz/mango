@@ -1144,6 +1144,7 @@ void pre_calculate_before_arrange(Monitor *m, bool want_animation,
 	int32_t stack_index = 0;
 	int32_t master_num = 0;
 	int32_t stack_num = 0;
+	Monitor *gm;
 
 	m->visible_clients = 0;
 	m->visible_tiling_clients = 0;
@@ -1174,6 +1175,12 @@ void pre_calculate_before_arrange(Monitor *m, bool want_animation,
 
 		if (c->mon == m && (c->isglobal || c->isunglobal)) {
 			c->tags = m->tagset[m->seltags];
+		} else if (config.single_tagset && !m->isoverview && !c->iskilling &&
+				   (c->isglobal || c->isunglobal) && c->mon) {
+			// global windows follow the monitor displaying their tags
+			gm = monitor_showing_tags(c->tags, NULL);
+			c->mon = gm ? gm : m;
+			c->tags = c->mon->tagset[c->mon->seltags];
 		}
 
 		if (from_view && m->sel == NULL && c->isglobal && VISIBLEON(c, m)) {

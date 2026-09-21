@@ -54,6 +54,12 @@ enum { UP, DOWN, LEFT, RIGHT, UNDIR, ALLDIR }; /* smartmovewin */
 #define TAGMATCH(C, M)                                                         \
 	((C) && (M) && (C)->mon == (M) && !(C)->isminimized &&                     \
 	 (((C)->tags & (M)->tagset[(M)->seltags])))
+/* Like VISIBLEON but ignores c->mon, so with a single shared tag set a
+ * client can be seen as visible on any monitor viewing its tags. */
+#define SVISIBLEON(C, M)                                                       \
+	((C) && (M) && (C)->mon && !(C)->isminimized &&                            \
+	 ((C)->isglobal || (C)->isunglobal ||                                      \
+	  ((C)->tags & (M)->tagset[(M)->seltags])))
 #define SCRATCHPAD_SHOWN(C) ((C) && (C)->is_in_scratchpad && !(C)->isminimized)
 #define ISFULLSCREEN(A)                                                        \
 	((A)->isfullscreen || (A)->ismaximizescreen ||                             \
