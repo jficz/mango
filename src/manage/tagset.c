@@ -59,20 +59,6 @@ uint32_t st_unused_tag(void) {
 	return 1;
 }
 
-Monitor *st_client_owner(const Client *c, const Monitor *exclude) {
-	Monitor *owner;
-
-	if (!c || !config.single_tagset)
-		return c ? c->mon : NULL;
-
-	/* special/TAG0 windows stay on their own monitor */
-	if (c->tags & TAG0_MASK)
-		return c->mon;
-
-	owner = st_monitor_showing_tags(c->tags, exclude);
-	return owner ? owner : c->mon;
-}
-
 uint32_t st_client_tags(const Client *c, const Monitor *m) {
 	Monitor *owner;
 
