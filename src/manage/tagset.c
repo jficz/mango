@@ -239,7 +239,7 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 	 * write goes through st_set_view so both slots stay valid: arrange() and
 	 * tag history read the inactive slot (UINT32_MAX view toggle) and stale
 	 * copies of taken tags there would resurrect duplicate ownership. */
-	while (depth < tag_num_MAX + 2) {
+	while (tm && depth < tag_num_MAX + 2) {
 		if (tm == m) {
 			/* cycle: degrade to a swap with the collision partner. The
 			 * partner keeps what it holds; m adopts its tagset for now,
