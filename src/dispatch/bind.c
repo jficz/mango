@@ -1534,9 +1534,19 @@ int32_t tag_silent(const Arg *arg) {
 	if (!target_client)
 		return 0;
 
-	target_client->tags =
-		(arg->ui & TAG0_MASK) ? TAG0_MASK : (arg->ui & TAGMASK);
-	client_reparent_group(target_client);
+	if (config.single_tagset && !(arg->ui & TAG0_MASK) && target_client->mon) {
+		/* re-tagging can change the tag owner: migrate and follow the
+		 * client only when its new tags are invisible on its monitor */
+		Monitor *tm = target_client->mon;
+		uint32_t cur = tm->tagset[tm->seltags] & TAGMASK;
+		client_set_tags(target_client, target_client->tags);
+		if (cur && !(target_client->tags & cur))
+			st_apply_view(tm, target_client->tags & TAGMASK);
+	} else {
+		target_client->tags =
+			(arg->ui & TAG0_MASK) ? TAG0_MASK : (arg->ui & TAGMASK);
+		client_reparent_group(target_client);
+	}
 	wl_list_for_each(fc, &server.clients, link) {
 		if (fc && fc != target_client && target_client->tags & fc->tags &&
 			ISFULLSCREEN(fc) && !target_client->isfloating) {
@@ -1873,10 +1883,15 @@ int32_t toggle_tag(const Arg *arg) {
 	}
 
 	if (newtags) {
-		sel->tags = newtags;
-		if (config.single_tagset && !(newtags & TAG0_MASK))
-			st_apply_view(sel->mon, sel->mon->tagset[sel->mon->seltags]);
-		client_reparent_group(sel);
+		client_set_tags(sel, newtags);
+		if (config.single_tagset && !(newtags & TAG0_MASK) && sel->mon) {
+			/* the client may now live on a tag another monitor shows:
+			 * follow it only when it would otherwise be invisible here */
+			uint32_t cur = sel->mon->tagset[sel->mon->seltags] & TAGMASK;
+			if (cur && !(newtags & cur) &&
+				st_monitor_showing_tags(newtags, sel->mon))
+				st_apply_view(sel->mon, newtags & TAGMASK);
+		}
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		arrange(server.selected_monitor, false, false);
 	}
@@ -2202,6 +2217,7 @@ int32_t zoom(const Arg *arg) {
 
 	wl_list_for_each(c, &server.clients,
 					 link) if (VISIBLEON(c, server.selected_monitor) &&
+							   c->mon == server.selected_monitor &&
 							   !c->isfloating) {
 		if (c != sel)
 			break;
@@ -2345,6 +2361,12 @@ static void set_overview(const Arg *arg, bool enter) {
 		server.selected_monitor->ov_normal_mode =
 			0; /* Clears hot-area normal mode when exiting overview. */
 
+		if (config.single_tagset && (target & TAGMASK) &&
+			!(target & TAG0_MASK)) {
+			/* the exit target may be owned by another monitor (clients
+			 * keep raw tags under the single tag set): take it over */
+			st_apply_view(server.selected_monitor, target & TAGMASK);
+		}
 		server.selected_monitor->tagset[server.selected_monitor->seltags] =
 			target;
 		wl_list_for_each(c, &server.clients, link) {

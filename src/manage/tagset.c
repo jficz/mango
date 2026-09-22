@@ -232,5 +232,12 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		if (st_active(chain[i]))
 			arrange(chain[i], false, false);
 	}
+
+	/* focus may have pointed at a client that migrated away */
+	if (m->sel && m->sel->mon != m)
+		m->sel = NULL;
+	if (server.selected_monitor == m && !m->sel)
+		m->sel = client_focus_top(m);
+
 	printstatus(IPC_WATCH_ARRANGGE);
 }

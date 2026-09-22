@@ -2971,7 +2971,7 @@ void show_hide_client(Client *c) {
 	if (!c->is_in_scratchpad) {
 		tag_client(&(Arg){.ui = target}, c);
 	} else {
-		c->tags = c->mon->tagset[c->mon->seltags];
+		client_set_tags(c, c->mon->tagset[c->mon->seltags]);
 		c->isminimized = 0;
 		arrange(c->mon, false, false);
 	}
@@ -3052,6 +3052,7 @@ void client_change_mon(Client *c, Monitor *m) {
 
 void view_insert_shift_tags(Monitor *m, uint32_t target) {
 	Client *c;
+	Monitor *mc;
 	uint32_t map[tag_num_MAX + 1] = {0};
 	uint32_t i;
 
@@ -3071,24 +3072,36 @@ void view_insert_shift_tags(Monitor *m, uint32_t target) {
 	}
 
 	wl_list_for_each(c, &server.clients, link) {
-		if (c->mon != m || c->iskilling)
+		if (c->iskilling)
+			continue;
+		/* Single tag set: tags are global, so every client's tags shift;
+		 * without this, other monitors would keep displaying stale tags */
+		if (c->mon != m && !config.single_tagset)
 			continue;
 		c->tags = tag_remap_mask(c->tags, map);
 	}
 
-	m->tagset[m->seltags] = tag_remap_mask(m->tagset[m->seltags], map);
-	m->tagset[m->seltags ^ 1] = tag_remap_mask(m->tagset[m->seltags ^ 1], map);
-	m->ovbk_current_tagset = tag_remap_mask(m->ovbk_current_tagset, map);
-	m->ovbk_prev_tagset = tag_remap_mask(m->ovbk_prev_tagset, map);
+	wl_list_for_each(mc, &server.monitors, link) {
+		/* Single tag set: only m's own view/history may shift; other
+		 * monitors' tags belong to their own clients */
+		if (mc != m && config.single_tagset)
+			continue;
+		mc->tagset[mc->seltags] = tag_remap_mask(mc->tagset[mc->seltags], map);
+		mc->tagset[mc->seltags ^ 1] =
+			tag_remap_mask(mc->tagset[mc->seltags ^ 1], map);
+		mc->ovbk_current_tagset = tag_remap_mask(mc->ovbk_current_tagset, map);
+		mc->ovbk_prev_tagset = tag_remap_mask(mc->ovbk_prev_tagset, map);
 
-	if (m->pertag->curtag <= (uint32_t)config.tag_num && map[m->pertag->curtag])
-		m->pertag->curtag = map[m->pertag->curtag];
-	if (m->pertag->prevtag <= (uint32_t)config.tag_num &&
-		map[m->pertag->prevtag])
-		m->pertag->prevtag = map[m->pertag->prevtag];
+		if (mc->pertag->curtag <= (uint32_t)config.tag_num &&
+			map[mc->pertag->curtag])
+			mc->pertag->curtag = map[mc->pertag->curtag];
+		if (mc->pertag->prevtag <= (uint32_t)config.tag_num &&
+			map[mc->pertag->prevtag])
+			mc->pertag->prevtag = map[mc->pertag->prevtag];
 
-	for (i = (uint32_t)config.tag_num - 1; i >= target; i--) {
-		tag_gather_move_pertag(m, i + 1, i);
+		for (i = (uint32_t)config.tag_num - 1; i >= target; i--) {
+			tag_gather_move_pertag(mc, i + 1, i);
+		}
 	}
 }
 
