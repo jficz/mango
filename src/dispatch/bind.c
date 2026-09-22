@@ -1526,6 +1526,8 @@ int32_t tag_monitor(const Arg *arg) {
 
 int32_t tag_silent(const Arg *arg) {
 	Client *fc = NULL;
+	Monitor *tm = NULL;
+	uint32_t cur = 0;
 	Client *target_client =
 		arg->tc
 			? arg->tc
@@ -1537,8 +1539,8 @@ int32_t tag_silent(const Arg *arg) {
 	if (config.single_tagset && !(arg->ui & TAG0_MASK) && target_client->mon) {
 		/* re-tagging can change the tag owner: migrate and follow the
 		 * client only when its new tags are invisible on its monitor */
-		Monitor *tm = target_client->mon;
-		uint32_t cur = tm->tagset[tm->seltags] & TAGMASK;
+		tm = target_client->mon;
+		cur = tm->tagset[tm->seltags] & TAGMASK;
 		client_set_tags(target_client, target_client->tags);
 		if (cur && !(target_client->tags & cur))
 			st_apply_view(tm, target_client->tags & TAGMASK);
