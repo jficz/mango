@@ -98,7 +98,10 @@ static uint32_t st_land_unused(const Monitor *m, uint32_t blocked) {
 /* Land on the tag the monitor displayed before its current one, if it is a
  * single regular tag nobody else in the chain displays; fall back to unused. */
 static uint32_t st_land_history(const Monitor *m, uint32_t blocked) {
-	uint32_t hist = m->pertag ? (1u << (m->pertag->prevtag - 1)) : 0;
+	/* prevtag 0 is the special workspace: no regular tag behind it */
+	uint32_t hist = m->pertag && m->pertag->prevtag > 0
+						? (1u << (m->pertag->prevtag - 1))
+						: 0;
 
 	hist &= TAGMASK & ~blocked;
 	if (hist && !(hist & (hist - 1)))

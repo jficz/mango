@@ -54,7 +54,7 @@ windowrule-once=Parameter:Values,Parameter:Values,appid:Values,title:Values
 | `height` | float | 0-9999 | Window height when it becomes a floating window,if the value below 1, it will be the percentage of the screen height,otherwise it will be the pixel value |
 | `offsetx` | integer | -999-999 | X offset from center (%), 100 is the edge of screen with outer gap |
 | `offsety` | integer | -999-999 | Y offset from center (%), 100 is the edge of screen with outer gap |
-| `monitor` | string | Any | Assign to monitor by [monitor spec](/docs/configuration/monitors#monitor-spec-format) (name, make, model, or serial) |
+| `monitor` | string | Any | Assign to monitor by [monitor spec](/docs/configuration/monitors#monitor-spec-format) (name, make, model, or serial). With `single_tagset` and a `tags` rule, the tag wins: the window opens on the monitor currently displaying its tag. |
 | `tags` | mask | `0-9` / `1\|3\|5` | Assign to specific one tag (use `0` for special workspace overlay) or multiple tags (use `\|` to split multiple tags) |
 | `no_force_center` | integer | `0` / `1` | Window does not force center |
 | `isnosizehint` | integer | `0` / `1` | Don't use min size and max size for size hints |
