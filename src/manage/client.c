@@ -2822,7 +2822,6 @@ void client_active(Client *c) {
 void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 							bool changefocus) {
 	uint32_t i, tmptag;
-	uint32_t revert_history = 0, revert_prevtag = 0;
 
 	if (!m || (arg->ui != (~0 & TAGMASK) && m->isoverview)) {
 		return;
@@ -2849,13 +2848,20 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 
 	if (config.single_tagset && !m->isoverview && (arg->ui & TAGMASK) &&
 		!(arg->ui & TAG0_MASK)) {
+		/* evict other monitors off the tags we are about to take. m's own
+		 * view is switched by the slot flip below, which keeps the tag
+		 * history intact */
 		st_apply_view(m, arg->ui & TAGMASK);
 		if ((m->tagset[m->seltags] & TAGMASK) == (arg->ui & TAGMASK)) {
-			/* the tagset is already m's current view (possibly just
-			 * swapped in): the common path below would overwrite the
-			 * history slot with the same view, so keep it */
-			revert_history = m->tagset[m->seltags ^ 1];
-			revert_prevtag = m->pertag->prevtag;
+			/* cycle degraded to a swap: m already adopted the partner's
+			 * tagset and the partner kept it, so the requested view is
+			 * m's own. Flipping would undo the swap and resurrect the
+			 * duplicate, so keep the history slot untouched */
+			if (changefocus)
+				client_focus(client_focus_top(m), 1);
+			arrange(m, false, true);
+			printstatus(IPC_WATCH_ARRANGGE);
+			return;
 		}
 	}
 
@@ -2879,13 +2885,6 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 
 		m->pertag->prevtag =
 			tmptag == m->pertag->curtag ? m->pertag->prevtag : tmptag;
-
-		if (revert_history) {
-			/* restore the history slot and prevtag that the write above
-			 * just overwrote with the unchanged view */
-			m->tagset[m->seltags] = revert_history;
-			m->pertag->prevtag = revert_prevtag;
-		}
 	} else {
 		tmptag = m->pertag->prevtag;
 		m->pertag->prevtag = m->pertag->curtag;

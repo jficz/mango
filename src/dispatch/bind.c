@@ -2177,6 +2177,8 @@ int32_t combo_view(const Arg *arg) {
 							   ->tagset[server.selected_monitor->seltags] &
 						   TAGMASK) |
 							  newtags);
+			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
+				newtags;
 		} else {
 			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
 				newtags;
