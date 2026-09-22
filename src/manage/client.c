@@ -1534,6 +1534,15 @@ void client_apply_rules(Client *c) {
 		newtags = TAG0_MASK;
 	}
 
+	/* Single tag set: a rule-assigned tag wins over the monitor assignment;
+	 * open on the monitor currently displaying the tagged view. */
+	if (config.single_tagset && newtags && !(newtags & TAG0_MASK) &&
+		(newtags & TAGMASK)) {
+		m = st_monitor_showing_tags(newtags, NULL);
+		if (m)
+			mon = m;
+	}
+
 	if (mon)
 		set_size_per(mon, c);
 

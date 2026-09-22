@@ -22,6 +22,7 @@
 #include "mango/manage/client.h"
 #include "mango/manage/layer.h"
 #include "mango/manage/monitor.h"
+#include "mango/manage/tagset.h"
 #include "mango/switcher/switcher.h"
 #include <linux/input-event-codes.h>
 #include <scenefx/types/wlr_scene.h>
@@ -837,6 +838,8 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		config->tag_gather = atoi(value);
 	} else if (strcmp(key, "single_tagset") == 0) {
 		config->single_tagset = atoi(value);
+	} else if (strcmp(key, "single_tagset_evict_history") == 0) {
+		config->single_tagset_evict_history = atoi(value);
 	} else if (strcmp(key, "center_master_overspread") == 0) {
 		config->center_master_overspread = atoi(value);
 	} else if (strcmp(key, "center_when_single_stack") == 0) {
@@ -3812,6 +3815,9 @@ void override_config(void) {
 	config.tag_num = CLAMP_INT(config.tag_num, 1, tag_num_MAX);
 	config.tag_gather = CLAMP_INT(config.tag_gather, 0, 1);
 	config.single_tagset = CLAMP_INT(config.single_tagset, 0, 1);
+	config.single_tagset_evict_history =
+		CLAMP_INT(config.single_tagset_evict_history, 0, 1);
+	st_set_evict_policy(config.single_tagset_evict_history);
 	config.center_master_overspread =
 		CLAMP_INT(config.center_master_overspread, 0, 1);
 	config.center_when_single_stack =
@@ -4038,6 +4044,7 @@ void set_value_default() {
 	config.tag_num = 9;
 	config.tag_gather = 0;
 	config.single_tagset = 0;
+	config.single_tagset_evict_history = 0;
 	config.center_master_overspread = 0;
 	config.center_when_single_stack = 1;
 
@@ -4765,6 +4772,23 @@ void reset_tag(int old_tag_num) {
 			if (m->pertag->prevtag > (uint32_t)config.tag_num)
 				m->pertag->prevtag = config.tag_num;
 			sync_workspaces_to_tag_num(m);
+		}
+
+		if (config.single_tagset) {
+			/* shrinking tag_num can collapse several monitors onto the
+			 * last tag; give duplicates fresh unique tags */
+			uint32_t seen = 0;
+			wl_list_for_each(m, &server.monitors, link) {
+				if (!st_active(m))
+					continue;
+				if (m->tagset[m->seltags] & seen) {
+					m->tagset[0] = m->tagset[1] = st_unused_tag();
+					m->pertag->curtag = m->pertag->prevtag =
+						get_tags_first_tag_num(m->tagset[m->seltags]);
+				}
+				seen |= m->tagset[m->seltags] & TAGMASK;
+			}
+			st_rehome_clients();
 		}
 	}
 }

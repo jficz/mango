@@ -118,6 +118,51 @@ void st_set_evict_policy(int32_t history) {
 	st_evict_policy = history ? st_land_history : st_land_unused;
 }
 
+/* Re-home clients whose tags are (or are not) displayed anywhere after a
+ * monitor joined or left the layout: move clients to the monitor showing
+ * their tags; orphan clients (tags shown by nobody) adopt the view of the
+ * monitor they end up on. Arranges every active monitor. */
+void st_rehome_clients(void) {
+	Client *c;
+	Monitor *tm, *owner;
+
+	if (!config.single_tagset)
+		return;
+
+	wl_list_for_each(c, &server.clients, link) {
+		if (c->iskilling || client_is_parked(c) || c->isminimized ||
+			(c->tags & TAG0_MASK) || c->isglobal || c->isunglobal)
+			continue;
+		owner = st_monitor_showing_tags(c->tags, NULL);
+		if (!owner) {
+			if (c->mon && st_active(c->mon)) {
+				client_set_tags(c, c->mon->tagset[c->mon->seltags]);
+			} else if (server.selected_monitor &&
+					   st_active(server.selected_monitor)) {
+				if (c->mon && c->mon->sel == c)
+					c->mon->sel = NULL;
+				c->mon = server.selected_monitor;
+				client_set_tags(c,
+								server.selected_monitor
+									->tagset[server.selected_monitor->seltags]);
+			}
+			continue;
+		}
+		if (owner != c->mon) {
+			if (c->mon && c->mon->sel == c)
+				c->mon->sel = NULL;
+			c->mon = owner;
+		}
+		if (!(c->tags & owner->tagset[owner->seltags]))
+			client_set_tags(c, owner->tagset[owner->seltags]);
+	}
+
+	wl_list_for_each(tm, &server.monitors, link) {
+		if (st_active(tm))
+			arrange(tm, false, false);
+	}
+}
+
 /* Take `newtags` for monitor m, resolving tag ownership conflicts across
  * monitors as one transaction. Evicts whichever monitors display parts of
  * newtags: each evicted monitor lands on a tag chosen by the eviction

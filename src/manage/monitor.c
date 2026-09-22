@@ -20,6 +20,7 @@
 #include "mango/manage/client.h"
 #include "mango/manage/layer.h"
 #include "mango/manage/misc.h"
+#include "mango/manage/tagset.h"
 #include "mango/manage/xwayland_primary.h"
 #include <fcntl.h>
 #include <scenefx/render/fx_renderer/fx_renderer.h>
@@ -799,6 +800,11 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 		server.chvt_backup_tag = 0;
 		memset(server.chvt_backup_monitor_name, 0,
 			   sizeof(server.chvt_backup_monitor_name));
+	} else if (config.single_tagset) {
+		/* tags are global: start a new monitor on a tag nobody shows */
+		m->tagset[0] = m->tagset[1] = st_unused_tag();
+		m->pertag->curtag = m->pertag->prevtag =
+			get_tags_first_tag_num(m->tagset[m->seltags]);
 	} else {
 		m->tagset[0] = m->tagset[1] = 1;
 		m->pertag->curtag = m->pertag->prevtag = 1;
@@ -958,6 +964,13 @@ void monitor_close(Monitor *m) {
 	if (server.selected_monitor) {
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		printstatus(IPC_WATCH_ARRANGGE);
+	}
+
+	if (config.single_tagset && !m->isoverview) {
+		/* release the tags of the closed monitor and re-home clients
+		 * whose tag owner disappeared */
+		m->tagset[0] = m->tagset[1] = 0;
+		st_rehome_clients();
 	}
 }
 
@@ -1130,6 +1143,18 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 
 		/* Calculate the effective monitor geometry to use for clients */
 		arrange_layers(m);
+
+		if (config.single_tagset && !m->isoverview) {
+			/* recover a usable unique view if this monitor's tags were
+			 * released or duplicated while it was off */
+			if (((m->tagset[0] | m->tagset[1]) & TAGMASK) == 0 ||
+				st_monitor_showing_tags(m->tagset[m->seltags], m))
+				m->tagset[0] = m->tagset[1] = st_unused_tag();
+			if (m->pertag)
+				m->pertag->curtag = m->pertag->prevtag =
+					get_tags_first_tag_num(m->tagset[m->seltags]);
+		}
+
 		/* Don't move clients to the left output when plugging monitors */
 		arrange(m, false, false);
 		/* make sure fullscreen clients have the right size */
@@ -1156,6 +1181,8 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 				set_size_per(server.selected_monitor, c);
 			}
 		}
+		if (config.single_tagset)
+			st_rehome_clients();
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		if (server.selected_monitor->lock_surface) {
 			client_notify_enter(server.selected_monitor->lock_surface->surface,

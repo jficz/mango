@@ -41,6 +41,8 @@ description: Advanced settings for XWayland, focus behavior, and system integrat
 | `single_scratchpad` | `1` | Only allow one scratchpad (named or standard) to be visible at a time. |
 | `tag_num` | `9` | Number of tags/workspaces (1–31). On config reload, clients on tags beyond this count are moved to the last tag. |
 | `tag_gather` | `0` | When `1`, occupied tags are compacted to consecutive tags starting at 1, eliminating gaps. For example, with windows on tags 1, 3 and 9, they move to 1, 2 and 3, and the current view follows. |
+| `single_tagset` | `0` | All monitors share one global set of tags: each tag is displayed on at most one monitor at a time and windows follow the monitor showing their tag. Viewing a tag that another monitor displays transfers it; the other monitor moves to another tag (cycles degrade to a swap). Inspired by the dwm/dwl singletagset patch. Windows on the special workspace (tag `00`) and global windows keep their normal per-monitor behavior. |
+| `single_tagset_evict_history` | `0` | With `single_tagset`, an evicted monitor tries to switch back to the tag it displayed before its current one (cascading through monitors when needed) instead of jumping to the first unused tag. |
 
 ## Window Behavior
 

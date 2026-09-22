@@ -50,4 +50,7 @@ void st_apply_view(Monitor *m, uint32_t newtags);
  * tag when possible (chains degrade to swaps on cycles either way). */
 void st_set_evict_policy(int32_t history);
 
+/* Re-home clients after monitors joined/left (hotplug, disable, close). */
+void st_rehome_clients(void);
+
 #endif
