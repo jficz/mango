@@ -2822,6 +2822,7 @@ void client_active(Client *c) {
 void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 							bool changefocus) {
 	uint32_t i, tmptag;
+	uint32_t revert_history = 0, revert_prevtag = 0;
 
 	if (!m || (arg->ui != (~0 & TAGMASK) && m->isoverview)) {
 		return;
@@ -2851,10 +2852,10 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 		st_apply_view(m, arg->ui & TAGMASK);
 		if ((m->tagset[m->seltags] & TAGMASK) == (arg->ui & TAGMASK)) {
 			/* the tagset is already m's current view (possibly just
-			 * swapped in): pretend we are coming from the other slot so
-			 * the common path below records the old view as history */
-			m->seltags ^= 1;
-			m->pertag->prevtag = get_tags_first_tag_num(m->tagset[m->seltags]);
+			 * swapped in): the common path below would overwrite the
+			 * history slot with the same view, so keep it */
+			revert_history = m->tagset[m->seltags ^ 1];
+			revert_prevtag = m->pertag->prevtag;
 		}
 	}
 
@@ -2878,6 +2879,13 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 
 		m->pertag->prevtag =
 			tmptag == m->pertag->curtag ? m->pertag->prevtag : tmptag;
+
+		if (revert_history) {
+			/* restore the history slot and prevtag that the write above
+			 * just overwrote with the unchanged view */
+			m->tagset[m->seltags] = revert_history;
+			m->pertag->prevtag = revert_prevtag;
+		}
 	} else {
 		tmptag = m->pertag->prevtag;
 		m->pertag->prevtag = m->pertag->curtag;
