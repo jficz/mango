@@ -24,9 +24,6 @@
 #define PERTAG_SLOTS (tag_num_MAX + 1)
 #endif
 
-struct wlr_color_transform;
-struct Client;
-
 struct Monitor {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
