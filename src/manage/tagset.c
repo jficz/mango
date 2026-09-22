@@ -183,6 +183,10 @@ void st_rehome_clients(void) {
 		if (st_active(tm))
 			arrange(tm, false, false);
 	}
+
+	/* callers may only arrange the selected monitor: notify every watcher
+	 * that tagsets and client homes changed on all of them */
+	printstatus(IPC_WATCH_ARRANGGE);
 }
 
 /* Take `newtags` for monitor m, resolving tag ownership conflicts across
