@@ -41,4 +41,13 @@ Monitor *st_client_owner(const Client *c, const Monitor *exclude);
  * another monitor owns the tags. Raw c->tags is never modified. */
 uint32_t st_client_tags(const Client *c, const Monitor *m);
 
+/* View transaction: give monitor m the tagset newtags, evicting other
+ * monitors that display parts of it (see st_apply_view in tagset.c). No-op
+ * when single_tagset is off or no other monitor holds any of newtags. */
+void st_apply_view(Monitor *m, uint32_t newtags);
+
+/* Eviction landing policy: 0 = first unused tag, 1 = monitor's previous
+ * tag when possible (chains degrade to swaps on cycles either way). */
+void st_set_evict_policy(int32_t history);
+
 #endif
