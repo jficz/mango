@@ -44,6 +44,10 @@ void st_apply_view(Monitor *m, uint32_t newtags);
  * No-op when single_tagset is off. */
 void st_follow_client(Client *c);
 
+/* True when c is displayed on its current monitor (honoring the single tag
+ * set ownership rules); equivalent to a tag check against c->mon's view. */
+bool st_client_shown(Client *c);
+
 /* Eviction landing policy: 0 = first unused tag, 1 = monitor's previous
  * tag when possible (chains degrade to swaps on cycles either way). */
 void st_set_evict_policy(int32_t history);

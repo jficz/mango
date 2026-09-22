@@ -257,3 +257,9 @@ void st_follow_client(Client *c) {
 	if (cur && !(c->tags & cur) && st_monitor_showing_tags(c->tags, m))
 		st_apply_view(m, c->tags & TAGMASK);
 }
+
+bool st_client_shown(Client *c) {
+	if (!config.single_tagset || !c || !c->mon)
+		return c && c->mon && (c->tags & c->mon->tagset[c->mon->seltags]);
+	return VISIBLEON(c, c->mon) || c->isglobal || c->isunglobal;
+}
