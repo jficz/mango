@@ -2840,6 +2840,28 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 		want_animation = false;
 	}
 
+	if (config.single_tagset && !m->isoverview && (arg->ui & TAGMASK) &&
+		!(arg->ui & TAG0_MASK)) {
+		st_apply_view(m, arg->ui & TAGMASK);
+		if ((m->tagset[m->seltags] & TAGMASK) == (arg->ui & TAGMASK)) {
+			/* the tagset is already m's current view (possibly just
+			 * swapped in): flip the sel slot so history keeps pointing at
+			 * the old view and record curtag explicitly */
+			tmptag = m->pertag->curtag;
+			m->seltags ^= 1;
+			m->tagset[m->seltags] = arg->ui & (TAGMASK | TAG0_MASK);
+			for (i = 0; !(arg->ui & 1u << i) && i < (uint32_t)config.tag_num;
+				 i++)
+				;
+			m->pertag->curtag = i >= (uint32_t)config.tag_num
+									? (uint32_t)config.tag_num
+									: i + 1;
+			m->pertag->prevtag =
+				tmptag == m->pertag->curtag ? m->pertag->prevtag : tmptag;
+			goto toggleseltags;
+		}
+	}
+
 	m->seltags ^= 1; /* toggle sel tagset */
 
 	if (arg->ui & (TAGMASK | TAG0_MASK)) {
@@ -2891,20 +2913,30 @@ void client_switch_view(const Arg *arg, bool want_animation) {
 	}
 }
 
-void tag_client(const Arg *arg, Client *target_client) {
+/* Re-assign tags of a client without moving it (single tag set migration). */
+void client_set_tags(Client *c, uint32_t tags) {
 	Client *fc = NULL;
+
+	if (!c || c->tags == tags)
+		return;
+
+	c->tags = tags;
+	client_reparent_group(c);
+
+	wl_list_for_each(fc, &server.clients, link) {
+		if (fc && fc != c && c->tags & fc->tags && ISFULLSCREEN(fc) &&
+			!c->isfloating) {
+			clear_fullscreen_flag(fc);
+		}
+	}
+}
+
+void tag_client(const Arg *arg, Client *target_client) {
 	if (target_client && (arg->ui & (TAGMASK | TAG0_MASK))) {
 
-		target_client->tags =
-			(arg->ui & TAG0_MASK) ? TAG0_MASK : (arg->ui & TAGMASK);
-		client_reparent_group(target_client);
-
-		wl_list_for_each(fc, &server.clients, link) {
-			if (fc && fc != target_client && target_client->tags & fc->tags &&
-				ISFULLSCREEN(fc) && !target_client->isfloating) {
-				clear_fullscreen_flag(fc);
-			}
-		}
+		client_set_tags(target_client, (arg->ui & TAG0_MASK)
+										   ? TAG0_MASK
+										   : (arg->ui & TAGMASK));
 		if (arg->ui & TAG0_MASK) {
 			arrange(target_client->mon, false, false);
 		}
@@ -2943,9 +2975,30 @@ void show_hide_client(Client *c) {
 
 void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 	Monitor *oldmon = c->mon;
+	Monitor *owner;
 
 	if (oldmon == m)
 		return;
+
+	/* Single tag set: clients follow the monitor displaying their tags.
+	 * Redirect a move to that monitor and hand the destination's view over
+	 * via the normal view transaction when the client brings its tags. */
+	if (config.single_tagset && st_active(m) && !client_is_parked(c) &&
+		!(c->tags & TAG0_MASK) && !c->isglobal && !c->isunglobal &&
+		!m->isoverview) {
+		if (!(newtags & (TAGMASK | TAG0_MASK)))
+			newtags = c->tags;
+		if (!(newtags & TAG0_MASK)) {
+			owner = st_monitor_showing_tags(newtags, m);
+			if (owner) {
+				m = owner;
+				if (oldmon == m)
+					return;
+			} else if (!(newtags & m->tagset[m->seltags])) {
+				st_apply_view(m, newtags & TAGMASK);
+			}
+		}
+	}
 
 	if (oldmon && oldmon->sel == c) {
 		oldmon->sel = NULL;

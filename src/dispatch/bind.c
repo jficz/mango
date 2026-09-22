@@ -1874,6 +1874,8 @@ int32_t toggle_tag(const Arg *arg) {
 
 	if (newtags) {
 		sel->tags = newtags;
+		if (config.single_tagset && !(newtags & TAG0_MASK))
+			st_apply_view(sel->mon, sel->mon->tagset[sel->mon->seltags]);
 		client_reparent_group(sel);
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		arrange(server.selected_monitor, false, false);
@@ -1897,6 +1899,13 @@ int32_t toggle_view(const Arg *arg) {
 		(target & TAGMASK);
 
 	if (newtagset) {
+		if (config.single_tagset && !server.selected_monitor->isoverview &&
+			!(is_special_active(server.selected_monitor))) {
+			newtagset &= ~st_other_used_tagset(server.selected_monitor);
+			if (!newtagset)
+				return 0;
+			st_apply_view(server.selected_monitor, newtagset);
+		}
 		server.selected_monitor->tagset[server.selected_monitor->seltags] =
 			newtagset;
 		client_focus(client_focus_top(server.selected_monitor), 1);
@@ -2156,8 +2165,19 @@ int32_t combo_view(const Arg *arg) {
 		return 0;
 
 	if (server.tag_combo) {
-		server.selected_monitor->tagset[server.selected_monitor->seltags] |=
-			newtags;
+		if (config.single_tagset && !server.selected_monitor->isoverview) {
+			newtags &= ~st_other_used_tagset(server.selected_monitor);
+			if (!newtags)
+				return 0;
+			st_apply_view(server.selected_monitor,
+						  (server.selected_monitor
+							   ->tagset[server.selected_monitor->seltags] &
+						   TAGMASK) |
+							  newtags);
+		} else {
+			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
+				newtags;
+		}
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		arrange(server.selected_monitor, false, false);
 	} else {

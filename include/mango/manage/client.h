@@ -381,6 +381,9 @@ void client_switch_view(const Arg *arg, bool want_animation);
 void tag_client(const Arg *arg, Client *target_client);
 void show_hide_client(Client *c);
 void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus);
+/* Re-assign a client's tags without moving it; safe no-op when unchanged.
+ * Clears conflicting fullscreen, reparents group, arranges. */
+void client_set_tags(Client *c, uint32_t tags);
 void client_change_mon(Client *c, Monitor *m);
 void view_insert_shift_tags(Monitor *m, uint32_t target);
 void client_set_floating(Client *c, int32_t floating);
