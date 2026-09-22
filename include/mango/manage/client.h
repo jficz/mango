@@ -48,6 +48,8 @@ enum { UP, DOWN, LEFT, RIGHT, UNDIR, ALLDIR }; /* smartmovewin */
 #define ISFAKETILED(A)                                                         \
 	(A && !(A)->isfloating && !(A)->isminimized && !(A)->iskilling &&          \
 	 !(A)->isunglobal)
+/* Effective tags of C for matching on M. With single_tagset this resolves
+ * tag ownership with an O(monitors) lookup; keep it out of per-pixel paths. */
 #define CLIENT_TAGS(C, M)                                                      \
 	((config.single_tagset && !is_special_active(M) &&                         \
 	  !((C)->tags & TAG0_MASK) && !(C)->isglobal && !(C)->isunglobal)          \
