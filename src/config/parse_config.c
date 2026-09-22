@@ -2682,6 +2682,8 @@ void reapply_tagrule(void) {
 }
 
 void reset_option(void) {
+	bool was_single_tagset = config.single_tagset;
+
 	init_baked_points();
 	pointer_cursor_activity();
 	reset_keyboard_layout();
@@ -2699,6 +2701,11 @@ void reset_option(void) {
 
 	reapply_tagrule();
 	reapply_monitor_rules();
+
+	/* turning the single tag set on at runtime can expose duplicate tags
+	 * left behind by per-monitor views: resolve them and re-home clients */
+	if (config.single_tagset && !was_single_tagset)
+		st_rehome_clients();
 
 	arrange(server.selected_monitor, false, false);
 }
@@ -3815,6 +3822,15 @@ void override_config(void) {
 	config.tag_num = CLAMP_INT(config.tag_num, 1, tag_num_MAX);
 	config.tag_gather = CLAMP_INT(config.tag_gather, 0, 1);
 	config.single_tagset = CLAMP_INT(config.single_tagset, 0, 1);
+	if (config.single_tagset && config.tag_gather) {
+		/* tag_gather compacts tags per monitor inside arrange() and is
+		 * unaware of other monitors' views: under the single tag set it
+		 * could silently collapse two monitors onto the same tag */
+		fprintf(stderr,
+				"\033[1;33m[WARN]\033[0m tag_gather is incompatible with "
+				"single_tagset: disabling tag_gather\n");
+		config.tag_gather = 0;
+	}
 	config.single_tagset_evict_history =
 		CLAMP_INT(config.single_tagset_evict_history, 0, 1);
 	st_set_evict_policy(config.single_tagset_evict_history);
@@ -4776,15 +4792,8 @@ void reset_tag(int old_tag_num) {
 
 		if (config.single_tagset) {
 			/* shrinking tag_num can collapse several monitors onto the
-			 * last tag; give duplicates fresh unique tags */
-			uint32_t seen = 0;
-			wl_list_for_each(m, &server.monitors, link) {
-				if (!st_active(m))
-					continue;
-				if (m->tagset[m->seltags] & seen)
-					st_take_unused_tag(m);
-				seen |= m->tagset[m->seltags] & TAGMASK;
-			}
+			 * last tag; st_rehome_clients resolves duplicate views and
+			 * re-homes the affected clients */
 			st_rehome_clients();
 		}
 	}

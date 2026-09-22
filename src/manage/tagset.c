@@ -6,8 +6,10 @@
 #include "mango/manage/client.h"
 #include "mango/manage/monitor.h"
 
-/* Core primitives of the single tag set. Pure queries over existing state:
- * no tagsets or client tags are ever mutated here. */
+/* Single tag set implementation. The query primitives below (up to the
+ * "view planning" divider) are pure: they read existing state and mutate
+ * nothing. Everything past the divider performs view transactions that
+ * change tagsets and client tags as a unit. */
 
 bool st_active(const Monitor *m) {
 	return config.single_tagset && m && !m->isoverview && !m->iscleanuping &&
@@ -152,12 +154,25 @@ static void st_migrate_clients(bool adopt) {
 /* Re-home clients whose tags are (or are not) displayed anywhere after a
  * monitor joined or left the layout: move clients to the monitor showing
  * their tags; orphan clients (tags shown by nobody) adopt the view of the
- * monitor they end up on. Arranges every active monitor. */
+ * monitor they end up on. Duplicate views are resolved so that after this
+ * call no tag is displayed by more than one monitor. Arranges every active
+ * monitor. */
 void st_rehome_clients(void) {
 	Monitor *tm;
+	uint32_t seen = 0;
 
 	if (!config.single_tagset)
 		return;
+
+	/* per-monitor views may pre-date the single tag set (feature toggled
+	 * at runtime): hand duplicates a fresh tag nobody displays */
+	wl_list_for_each(tm, &server.monitors, link) {
+		if (!st_active(tm))
+			continue;
+		if (tm->tagset[tm->seltags] & seen)
+			st_take_unused_tag(tm);
+		seen |= tm->tagset[tm->seltags] & TAGMASK;
+	}
 
 	st_migrate_clients(true);
 
@@ -258,8 +273,4 @@ void st_follow_client(Client *c) {
 		st_apply_view(m, c->tags & TAGMASK);
 }
 
-bool st_client_shown(Client *c) {
-	if (!config.single_tagset || !c || !c->mon)
-		return c && c->mon && (c->tags & c->mon->tagset[c->mon->seltags]);
-	return VISIBLEON(c, c->mon) || c->isglobal || c->isunglobal;
-}
+bool st_client_shown(Client *c) { return c && c->mon && VISIBLEON(c, c->mon); }
