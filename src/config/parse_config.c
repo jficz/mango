@@ -835,6 +835,8 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		config->tag_num = atoi(value);
 	} else if (strcmp(key, "tag_gather") == 0) {
 		config->tag_gather = atoi(value);
+	} else if (strcmp(key, "single_tagset") == 0) {
+		config->single_tagset = atoi(value);
 	} else if (strcmp(key, "center_master_overspread") == 0) {
 		config->center_master_overspread = atoi(value);
 	} else if (strcmp(key, "center_when_single_stack") == 0) {
@@ -3809,6 +3811,7 @@ void override_config(void) {
 	config.default_nmaster = CLAMP_INT(config.default_nmaster, 1, 1000);
 	config.tag_num = CLAMP_INT(config.tag_num, 1, tag_num_MAX);
 	config.tag_gather = CLAMP_INT(config.tag_gather, 0, 1);
+	config.single_tagset = CLAMP_INT(config.single_tagset, 0, 1);
 	config.center_master_overspread =
 		CLAMP_INT(config.center_master_overspread, 0, 1);
 	config.center_when_single_stack =
@@ -4034,6 +4037,7 @@ void set_value_default() {
 	config.default_nmaster = 1;
 	config.tag_num = 9;
 	config.tag_gather = 0;
+	config.single_tagset = 0;
 	config.center_master_overspread = 0;
 	config.center_when_single_stack = 1;
 

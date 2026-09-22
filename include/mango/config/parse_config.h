@@ -362,8 +362,9 @@ typedef struct {
 	uint32_t new_is_master;
 	float default_mfact;
 	uint32_t default_nmaster;
-	int32_t tag_num;	// Configurable tag count, range 1..tag_num_MAX.
-	int32_t tag_gather; // Compact tags to remove gaps
+	int32_t tag_num;	   // Configurable tag count, range 1..tag_num_MAX.
+	int32_t tag_gather;	   // Compact tags to remove gaps
+	int32_t single_tagset; // All monitors share one global tag set
 	int32_t center_master_overspread;
 	int32_t center_when_single_stack;
 
