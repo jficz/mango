@@ -209,14 +209,15 @@ void st_rehome_clients(void) {
 	printstatus(IPC_WATCH_ARRANGGE);
 }
 
-/* Take `newtags` for monitor m, resolving tag ownership conflicts across
- * monitors as one transaction. Evicts whichever monitors display parts of
- * newtags: each evicted monitor lands on a tag chosen by the eviction
- * policy and gives up only the tags the chain actually takes. If the
- * eviction chain runs into m again (cycle), the operation degrades to a
- * swap: m adopts the tagset of the monitor it collided with. Clients
- * follow their tags onto the new owners; clients keeping no visible tag
- * are reassigned to their tag owner. */
+/* Evict every monitor displaying parts of `newtags` so m can take them as
+ * one transaction. The caller is responsible for actually switching m's
+ * view: this only frees the tags from their current owners. Each evicted
+ * monitor lands on a tag chosen by the eviction policy and gives up only
+ * the tags the chain actually takes. If the eviction chain runs into m
+ * again (cycle), the operation degrades to a swap: m adopts the tagset of
+ * the monitor it collided with, so the caller's view switch completes the
+ * exchange. Clients follow their tags onto the new owners; clients keeping
+ * no visible tag are reassigned to their tag owner. */
 void st_apply_view(Monitor *m, uint32_t newtags) {
 	Monitor *chain[tag_num_MAX + 2];
 	Monitor *tm;
@@ -242,12 +243,13 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 	while (tm && depth < tag_num_MAX + 2) {
 		if (tm == m) {
 			/* cycle: degrade to a swap with the collision partner. The
-			 * partner keeps what it holds; m adopts its tagset for now,
-			 * the initiator write below finishes the swap. */
+			 * partner keeps what it holds; m adopts its tagset, the
+			 * caller's view switch is skipped because the target view
+			 * would be m's own. */
 			Monitor *other = chain[depth - 1];
 
 			st_set_view(m, other->tagset[other->seltags] & TAGMASK);
-			break;
+			goto done;
 		}
 		chain[depth++] = tm;
 		oldset = tm->tagset[tm->seltags];
@@ -264,9 +266,7 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		tm = st_monitor_showing_tags(newtags, m);
 	}
 
-	/* the initiator finally takes the tags */
-	st_set_view(m, newtags & TAGMASK);
-
+done:
 	/* migrate clients to the monitors displaying their tags */
 	st_migrate_clients(false);
 
@@ -294,8 +294,10 @@ void st_follow_client(Client *c) {
 
 	m = c->mon;
 	cur = m->tagset[m->seltags] & TAGMASK;
-	if (cur && !(c->tags & cur) && st_monitor_showing_tags(c->tags, m))
+	if (cur && !(c->tags & cur) && st_monitor_showing_tags(c->tags, m)) {
 		st_apply_view(m, c->tags & TAGMASK);
+		st_set_view(m, c->tags & TAGMASK);
+	}
 }
 
 bool st_client_shown(Client *c) { return c && c->mon && VISIBLEON(c, c->mon); }
