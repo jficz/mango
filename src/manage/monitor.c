@@ -802,9 +802,7 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 			   sizeof(server.chvt_backup_monitor_name));
 	} else if (config.single_tagset) {
 		/* tags are global: start a new monitor on a tag nobody shows */
-		m->tagset[0] = m->tagset[1] = st_unused_tag();
-		m->pertag->curtag = m->pertag->prevtag =
-			get_tags_first_tag_num(m->tagset[m->seltags]);
+		st_take_unused_tag(m);
 	} else {
 		m->tagset[0] = m->tagset[1] = 1;
 		m->pertag->curtag = m->pertag->prevtag = 1;
@@ -1149,10 +1147,7 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 			 * released or duplicated while it was off */
 			if (((m->tagset[0] | m->tagset[1]) & TAGMASK) == 0 ||
 				st_monitor_showing_tags(m->tagset[m->seltags], m))
-				m->tagset[0] = m->tagset[1] = st_unused_tag();
-			if (m->pertag)
-				m->pertag->curtag = m->pertag->prevtag =
-					get_tags_first_tag_num(m->tagset[m->seltags]);
+				st_take_unused_tag(m);
 		}
 
 		/* Don't move clients to the left output when plugging monitors */

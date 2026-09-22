@@ -4781,11 +4781,8 @@ void reset_tag(int old_tag_num) {
 			wl_list_for_each(m, &server.monitors, link) {
 				if (!st_active(m))
 					continue;
-				if (m->tagset[m->seltags] & seen) {
-					m->tagset[0] = m->tagset[1] = st_unused_tag();
-					m->pertag->curtag = m->pertag->prevtag =
-						get_tags_first_tag_num(m->tagset[m->seltags]);
-				}
+				if (m->tagset[m->seltags] & seen)
+					st_take_unused_tag(m);
 				seen |= m->tagset[m->seltags] & TAGMASK;
 			}
 			st_rehome_clients();

@@ -25,6 +25,9 @@ uint32_t st_other_used_tagset(const Monitor *m);
 /* First tag bit (1..tag_num) displayed by no monitor; fallback bit 1. */
 uint32_t st_unused_tag(void);
 
+/* Point m's view and tag history at a tag no other monitor displays. */
+void st_take_unused_tag(Monitor *m);
+
 /* Effective tags of c for tag matching on m under the single tag set: the
  * caller guarantees c is a regular (non-TAG0, non-global) client; returns
  * c->tags when m is the owner (or ownership is undetermined), and 0 when

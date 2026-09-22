@@ -59,6 +59,13 @@ uint32_t st_unused_tag(void) {
 	return 1;
 }
 
+void st_take_unused_tag(Monitor *m) {
+	m->tagset[0] = m->tagset[1] = st_unused_tag();
+	if (m->pertag)
+		m->pertag->curtag = m->pertag->prevtag =
+			get_tags_first_tag_num(m->tagset[m->seltags]);
+}
+
 uint32_t st_client_tags(const Client *c, const Monitor *m) {
 	Monitor *owner;
 
@@ -104,16 +111,12 @@ void st_set_evict_policy(int32_t history) {
 	st_evict_policy = history ? st_land_history : st_land_unused;
 }
 
-/* Re-home clients whose tags are (or are not) displayed anywhere after a
- * monitor joined or left the layout: move clients to the monitor showing
- * their tags; orphan clients (tags shown by nobody) adopt the view of the
- * monitor they end up on. Arranges every active monitor. */
-void st_rehome_clients(void) {
+/* Move every regular client onto the monitor displaying its tags. Clients
+ * whose tags nobody shows are left alone when adopt is false; otherwise they
+ * adopt the view of their (or the selected) monitor. */
+static void st_migrate_clients(bool adopt) {
 	Client *c;
-	Monitor *tm, *owner;
-
-	if (!config.single_tagset)
-		return;
+	Monitor *owner;
 
 	wl_list_for_each(c, &server.clients, link) {
 		if (c->iskilling || client_is_parked(c) || c->isminimized ||
@@ -121,6 +124,8 @@ void st_rehome_clients(void) {
 			continue;
 		owner = st_monitor_showing_tags(c->tags, NULL);
 		if (!owner) {
+			if (!adopt)
+				continue;
 			if (c->mon && st_active(c->mon)) {
 				client_set_tags(c, c->mon->tagset[c->mon->seltags]);
 			} else if (server.selected_monitor &&
@@ -142,6 +147,19 @@ void st_rehome_clients(void) {
 		if (!(c->tags & owner->tagset[owner->seltags]))
 			client_set_tags(c, owner->tagset[owner->seltags]);
 	}
+}
+
+/* Re-home clients whose tags are (or are not) displayed anywhere after a
+ * monitor joined or left the layout: move clients to the monitor showing
+ * their tags; orphan clients (tags shown by nobody) adopt the view of the
+ * monitor they end up on. Arranges every active monitor. */
+void st_rehome_clients(void) {
+	Monitor *tm;
+
+	if (!config.single_tagset)
+		return;
+
+	st_migrate_clients(true);
 
 	wl_list_for_each(tm, &server.monitors, link) {
 		if (st_active(tm))
@@ -158,9 +176,8 @@ void st_rehome_clients(void) {
  * follow their tags onto the new owners; clients keeping no visible tag
  * are reassigned to their tag owner. */
 void st_apply_view(Monitor *m, uint32_t newtags) {
-	Client *c;
 	Monitor *chain[tag_num_MAX + 2];
-	Monitor *tm, *owner;
+	Monitor *tm;
 	uint32_t blocked, taken, land, oldset;
 	int32_t depth, i;
 
@@ -211,21 +228,7 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 	m->tagset[m->seltags] = newtags;
 
 	/* migrate clients to the monitors displaying their tags */
-	wl_list_for_each(c, &server.clients, link) {
-		if (c->iskilling || client_is_parked(c) || c->isminimized ||
-			(c->tags & TAG0_MASK) || c->isglobal || c->isunglobal)
-			continue;
-		owner = st_monitor_showing_tags(c->tags, NULL);
-		if (!owner)
-			continue;
-		if (owner != c->mon) {
-			if (c->mon && c->mon->sel == c)
-				c->mon->sel = NULL;
-			c->mon = owner;
-		}
-		if (!(c->tags & owner->tagset[owner->seltags]))
-			client_set_tags(c, owner->tagset[owner->seltags]);
-	}
+	st_migrate_clients(false);
 
 	/* arrange every monitor whose view or clients changed */
 	for (i = 0; i < depth; i++) {
