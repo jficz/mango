@@ -5,6 +5,7 @@
 #include "mango/common/types.h"
 #include "mango/config/parse_config.h"
 #include "mango/draw/dim-node.h"
+#include "mango/manage/tagset.h"
 #include <stdint.h>
 #include <sys/types.h>
 #include <wayland-server-core.h>
@@ -47,13 +48,18 @@ enum { UP, DOWN, LEFT, RIGHT, UNDIR, ALLDIR }; /* smartmovewin */
 #define ISFAKETILED(A)                                                         \
 	(A && !(A)->isfloating && !(A)->isminimized && !(A)->iskilling &&          \
 	 !(A)->isunglobal)
+#define CLIENT_TAGS(C, M)                                                      \
+	((config.single_tagset && !is_special_active(M) &&                         \
+	  !((C)->tags & TAG0_MASK) && !(C)->isglobal && !(C)->isunglobal)          \
+		 ? st_client_tags((C), (M))                                            \
+		 : (C)->tags)
 #define VISIBLEON(C, M)                                                        \
 	((C) && (M) && (C)->mon == (M) && !(C)->isminimized &&                     \
-	 (((C)->tags & (M)->tagset[(M)->seltags] || (C)->isglobal ||               \
-	   (C)->isunglobal)))
+	 ((CLIENT_TAGS(C, M) & (M)->tagset[(M)->seltags]) || (C)->isglobal ||      \
+	  (C)->isunglobal))
 #define TAGMATCH(C, M)                                                         \
 	((C) && (M) && (C)->mon == (M) && !(C)->isminimized &&                     \
-	 (((C)->tags & (M)->tagset[(M)->seltags])))
+	 (CLIENT_TAGS(C, M) & (M)->tagset[(M)->seltags]))
 #define SCRATCHPAD_SHOWN(C) ((C) && (C)->is_in_scratchpad && !(C)->isminimized)
 #define ISFULLSCREEN(A)                                                        \
 	((A)->isfullscreen || (A)->ismaximizescreen ||                             \
