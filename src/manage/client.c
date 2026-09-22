@@ -2854,20 +2854,10 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 		st_apply_view(m, arg->ui & TAGMASK);
 		if ((m->tagset[m->seltags] & TAGMASK) == (arg->ui & TAGMASK)) {
 			/* the tagset is already m's current view (possibly just
-			 * swapped in): flip the sel slot so history keeps pointing at
-			 * the old view and record curtag explicitly */
-			tmptag = m->pertag->curtag;
+			 * swapped in): pretend we are coming from the other slot so
+			 * the common path below records the old view as history */
 			m->seltags ^= 1;
-			m->tagset[m->seltags] = arg->ui & (TAGMASK | TAG0_MASK);
-			for (i = 0; !(arg->ui & 1u << i) && i < (uint32_t)config.tag_num;
-				 i++)
-				;
-			m->pertag->curtag = i >= (uint32_t)config.tag_num
-									? (uint32_t)config.tag_num
-									: i + 1;
-			m->pertag->prevtag =
-				tmptag == m->pertag->curtag ? m->pertag->prevtag : tmptag;
-			goto toggleseltags;
+			m->pertag->prevtag = get_tags_first_tag_num(m->tagset[m->seltags]);
 		}
 	}
 

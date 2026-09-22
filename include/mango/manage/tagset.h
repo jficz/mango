@@ -36,6 +36,11 @@ uint32_t st_client_tags(const Client *c, const Monitor *m);
  * when single_tagset is off or no other monitor holds any of newtags. */
 void st_apply_view(Monitor *m, uint32_t newtags);
 
+/* After re-tagging a client in place: if its tags moved to a monitor other
+ * than c->mon and are invisible there, follow them with a view transaction.
+ * No-op when single_tagset is off. */
+void st_follow_client(Client *c);
+
 /* Eviction landing policy: 0 = first unused tag, 1 = monitor's previous
  * tag when possible (chains degrade to swaps on cycles either way). */
 void st_set_evict_policy(int32_t history);

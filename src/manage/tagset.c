@@ -241,3 +241,16 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 
 	printstatus(IPC_WATCH_ARRANGGE);
 }
+
+void st_follow_client(Client *c) {
+	Monitor *m;
+	uint32_t cur;
+
+	if (!config.single_tagset || !c || !c->mon || (c->tags & TAG0_MASK))
+		return;
+
+	m = c->mon;
+	cur = m->tagset[m->seltags] & TAGMASK;
+	if (cur && !(c->tags & cur) && st_monitor_showing_tags(c->tags, m))
+		st_apply_view(m, c->tags & TAGMASK);
+}
