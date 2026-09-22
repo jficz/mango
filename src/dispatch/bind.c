@@ -2217,6 +2217,10 @@ int32_t zoom(const Arg *arg) {
 
 	if (!sel)
 		sel = c;
+	/* the fallback candidate comes from the global stacking order and may
+	 * not be visible on this monitor: never promote it out of view */
+	if (!VISIBLEON(sel, server.selected_monitor))
+		return 0;
 	wl_list_remove(&sel->link);
 	wl_list_insert(&server.clients, &sel->link);
 
