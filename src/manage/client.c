@@ -1600,9 +1600,7 @@ void client_apply_rules(Client *c) {
 		c->old_master_inner_per = c->master_inner_per;
 	}
 
-	if (c->mon &&
-		!(c->mon == server.selected_monitor &&
-		  c->tags & c->mon->tagset[c->mon->seltags]) &&
+	if (c->mon && !(c->mon == server.selected_monitor && st_client_shown(c)) &&
 		!c->isopensilent && !c->istagsilent) {
 		c->animation.tag_from_rule = true;
 		client_view_on_monitor(&(Arg){.ui = c->tags}, true, c->mon, true);
@@ -2560,8 +2558,7 @@ void handle_client_activation_request(struct wl_listener *listener,
 
 	if (config.focus_on_activate && !c->istagsilent &&
 		c != server.selected_monitor->sel) {
-		if (!(c->mon == server.selected_monitor &&
-			  c->tags & c->mon->tagset[c->mon->seltags]))
+		if (!(c->mon == server.selected_monitor && st_client_shown(c)))
 			client_view_on_monitor(&(Arg){.ui = c->tags}, true, c->mon, true);
 		client_focus(c, 1);
 	} else if (c != client_focus_top(server.selected_monitor)) {
@@ -4340,8 +4337,7 @@ void handle_xwayland_surface_request_activate(struct wl_listener *listener,
 
 	if (config.focus_on_activate && !c->istagsilent &&
 		c != server.selected_monitor->sel) {
-		if (!(c->mon == server.selected_monitor &&
-			  c->tags & c->mon->tagset[c->mon->seltags]))
+		if (!(c->mon == server.selected_monitor && st_client_shown(c)))
 			client_view_on_monitor(&(Arg){.ui = c->tags}, true, c->mon, true);
 		wlr_xwayland_surface_activate(c->surface.xwayland, 1);
 		client_focus(c, 1);
