@@ -61,6 +61,26 @@ uint32_t st_unused_tag(void) {
 	return 1;
 }
 
+/* Set m's current view to a tagset no other monitor displays, keeping the
+ * inactive slot consistent (it is read as history by the all-tags toggle)
+ * and pertag pointing at a valid tag index. */
+static void st_set_view(Monitor *m, uint32_t tags) {
+	uint32_t cur;
+
+	tags &= TAGMASK;
+	if (!tags)
+		tags = st_unused_tag();
+	m->tagset[m->seltags] = tags;
+	if (!(m->tagset[m->seltags ^ 1] & TAGMASK))
+		m->tagset[m->seltags ^ 1] = tags;
+	if (!m->pertag)
+		return;
+	cur = get_tags_first_tag_num(tags);
+	m->pertag->curtag = cur;
+	if (!m->pertag->prevtag || m->pertag->prevtag > (uint32_t)config.tag_num)
+		m->pertag->prevtag = cur;
+}
+
 void st_take_unused_tag(Monitor *m) {
 	m->tagset[0] = m->tagset[1] = st_unused_tag();
 	if (m->pertag)
@@ -215,17 +235,18 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 	chain[0] = m;
 	depth = 1;
 
-	/* evict the chain of monitors sitting on the tags we take */
+	/* evict the chain of monitors sitting on the tags we take. Every tagset
+	 * write goes through st_set_view so both slots stay valid: arrange() and
+	 * tag history read the inactive slot (UINT32_MAX view toggle) and stale
+	 * copies of taken tags there would resurrect duplicate ownership. */
 	while (depth < tag_num_MAX + 2) {
 		if (tm == m) {
-			/* cycle: degrade to a swap with the collision partner */
+			/* cycle: degrade to a swap with the collision partner. The
+			 * partner keeps what it holds; m adopts its tagset for now,
+			 * the initiator write below finishes the swap. */
 			Monitor *other = chain[depth - 1];
 
-			/* other keeps what it holds; m takes over its view */
-			m->tagset[m->seltags] = other->tagset[other->seltags];
-			if (m->pertag)
-				m->pertag->curtag =
-					get_tags_first_tag_num(m->tagset[m->seltags] & TAGMASK);
+			st_set_view(m, other->tagset[other->seltags] & TAGMASK);
 			break;
 		}
 		chain[depth++] = tm;
@@ -234,10 +255,7 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		if (!land || (land & taken))
 			land = st_unused_tag();
 		/* keep the parts of its view the chain does not take */
-		tm->tagset[tm->seltags] = (oldset & ~(blocked | taken)) | land;
-		if (tm->pertag)
-			tm->pertag->curtag =
-				get_tags_first_tag_num(tm->tagset[tm->seltags] & TAGMASK);
+		st_set_view(tm, (oldset & ~(blocked | taken)) | land);
 
 		blocked |= oldset & TAGMASK;
 		taken |= land;
@@ -247,7 +265,7 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 	}
 
 	/* the initiator finally takes the tags */
-	m->tagset[m->seltags] = newtags;
+	st_set_view(m, newtags & TAGMASK);
 
 	/* migrate clients to the monitors displaying their tags */
 	st_migrate_clients(false);
