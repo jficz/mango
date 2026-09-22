@@ -1143,8 +1143,10 @@ void handle_output_layout_change(struct wl_listener *listener, void *data) {
 		arrange_layers(m);
 
 		if (config.single_tagset && !m->isoverview) {
-			/* recover a usable unique view if this monitor's tags were
-			 * released or duplicated while it was off */
+			/* Unclaimed tags come back to the returning monitor (sleep or
+			 * dock reconnect); if another monitor took its tags over while
+			 * it was off, join like a new monitor on a fresh tag with
+			 * cleared history: the user broke the chain, no guesses. */
 			if (((m->tagset[0] | m->tagset[1]) & TAGMASK) == 0 ||
 				st_monitor_showing_tags(m->tagset[m->seltags], m))
 				st_take_unused_tag(m);
