@@ -1,4 +1,5 @@
 #include "mango/manage/tagset.h"
+#include "mango/animation/client.h"
 #include "mango/common/server.h"
 #include "mango/config/parse_config.h"
 #include "mango/ipc/ipc.h"
@@ -168,7 +169,8 @@ void st_set_evict_policy(int32_t mode) {
 }
 
 /* Move every regular client onto the monitor displaying its tags. Clients
- * whose tags nobody shows are left alone. */
+ * whose tags nobody shows keep their tags and stay parked (hidden) where
+ * they are: adopting a foreign view would destroy their tag assignment. */
 void st_migrate_clients(uint32_t landing) {
 	Client *c;
 	Monitor *owner;
@@ -178,60 +180,106 @@ void st_migrate_clients(uint32_t landing) {
 			(c->tags & TAG0_MASK) || c->isglobal || c->isunglobal)
 			continue;
 		owner = st_monitor_showing_tags(c->tags, NULL);
-		if (!owner) {
-			if (!landing || !(c->tags & landing))
-				continue;
-			if (c->mon && st_active(c->mon)) {
-				client_set_tags(c, c->mon->tagset[c->mon->seltags]);
-			} else if (server.selected_monitor &&
-					   st_active(server.selected_monitor)) {
-				if (c->mon && c->mon->sel == c)
-					c->mon->sel = NULL;
-				c->mon = server.selected_monitor;
-				client_set_tags(c,
-								server.selected_monitor
-									->tagset[server.selected_monitor->seltags]);
-			}
-			continue;
-		}
+		if (!owner)
+			continue; /* orphan: hidden until its tag is viewed again */
 		if (owner != c->mon) {
 			if (c->mon && c->mon->sel == c)
 				c->mon->sel = NULL;
 			c->mon = owner;
+			/* make sure the client actually gets resized on the new
+			 * monitor: layouts skip clients that are not visible yet,
+			 * so set the geometry directly (same as client_set_monitor) */
+			resize(c, c->geom, 0);
 		}
-		if (!(c->tags & owner->tagset[owner->seltags]))
-			client_set_tags(c, owner->tagset[owner->seltags]);
 	}
 }
 
-/* Re-home clients whose tags are (or are not) displayed anywhere after a
- * monitor joined or left the layout: move clients to the monitor showing
- * their tags; orphan clients (tags shown by nobody) adopt the view of the
- * monitor they end up on. Duplicate views are resolved so that after this
- * call no tag is displayed by more than one monitor. Arranges every active
- * monitor. */
+/* Re-home clients after a monitor joined or left the layout: move clients to
+ * the monitor showing their tags; clients whose tags nobody shows stay
+ * parked on their monitor until their tag is viewed again. Duplicate views
+ * are resolved so that after this call no tag is displayed by more than one
+ * monitor. Arranges every active monitor. */
+/* History signal: m's inactive slot holds exactly the tag its pertag history
+ * remembers from before the current view. Such a monitor is "returning" to
+ * that tag and wins it in a duplicate resolution. */
+static bool st_returning_to(const Monitor *m, uint32_t tagbit) {
+	return m->pertag && m->pertag->prevtag > 0 && tagbit &&
+		   !(tagbit & (tagbit - 1)) && (m->tagset[m->seltags ^ 1] & tagbit) &&
+		   (m->tagset[m->seltags ^ 1] & TAGMASK) == tagbit;
+}
+
 void st_rehome_clients(void) {
-	Monitor *tm;
-	uint32_t seen = 0;
+	Monitor *tm, *other;
+	uint32_t seen, dup;
 
 	if (!config.single_tagset)
 		return;
 
 	/* per-monitor views may pre-date the single tag set (feature toggled
-	 * at runtime): hand duplicates a fresh tag nobody displays */
+	 * at runtime), or a monitor may have been destroyed leaving its tags
+	 * unowned: resolve duplicates by history. A monitor whose history
+	 * points back at a duplicated tag returns to it; the other copy is
+	 * dropped and that monitor keeps the rest of its view. Only a monitor
+	 * left with an empty view gets a fresh tag. */
+	for (int32_t round = 0; round < config.tag_num + 2; round++) {
+		seen = 0;
+		dup = 0;
+		tm = other = NULL;
+		wl_list_for_each(tm, &server.monitors, link) {
+			if (!st_active(tm))
+				continue;
+			other = st_monitor_showing_tags(tm->tagset[tm->seltags], tm);
+			if (other) {
+				dup = tm->tagset[tm->seltags] & other->tagset[other->seltags] &
+					  seen & TAGMASK;
+				if (!dup)
+					dup = tm->tagset[tm->seltags] &
+						  other->tagset[other->seltags] & TAGMASK;
+				break;
+			}
+			seen |= tm->tagset[tm->seltags] & TAGMASK;
+		}
+		if (!tm || !other)
+			break; /* no duplicates left */
+
+		if (st_returning_to(tm, get_tags_first_tag(dup))) {
+			/* tm is returning to the tag: other drops its copy */
+			st_set_view(other, other->tagset[other->seltags] & ~dup);
+			if (!(other->tagset[other->seltags] & TAGMASK))
+				st_take_unused_tag(other);
+		} else if (st_returning_to(other, get_tags_first_tag(dup))) {
+			st_set_view(tm, tm->tagset[tm->seltags] & ~dup);
+			if (!(tm->tagset[tm->seltags] & TAGMASK))
+				st_take_unused_tag(tm);
+		} else {
+			/* no history signal: the later monitor yields */
+			st_set_view(tm, tm->tagset[tm->seltags] & ~dup);
+			if (!(tm->tagset[tm->seltags] & TAGMASK))
+				st_take_unused_tag(tm);
+		}
+
+		/* views changed: repair focus before the next round reads sel */
+		wl_list_for_each(other, &server.monitors, link) {
+			if (!st_active(other))
+				continue;
+			if (other->sel && other->sel->mon != other)
+				other->sel = NULL;
+			if (!other->sel)
+				other->sel = client_focus_top(other);
+		}
+	}
+
+	st_migrate_clients(0);
+
 	wl_list_for_each(tm, &server.monitors, link) {
 		if (!st_active(tm))
 			continue;
-		if (tm->tagset[tm->seltags] & seen)
-			st_take_unused_tag(tm);
-		seen |= tm->tagset[tm->seltags] & TAGMASK;
-	}
-
-	st_migrate_clients(true);
-
-	wl_list_for_each(tm, &server.monitors, link) {
-		if (st_active(tm))
-			arrange(tm, false, false);
+		/* focus may point at a client that moved to another monitor */
+		if (tm->sel && tm->sel->mon != tm)
+			tm->sel = NULL;
+		if (!tm->sel)
+			tm->sel = client_focus_top(tm);
+		arrange(tm, false, false);
 	}
 
 	/* callers may only arrange the selected monitor: notify every watcher
