@@ -242,14 +242,9 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 	 * copies of taken tags there would resurrect duplicate ownership. */
 	while (tm && depth < tag_num_MAX + 2) {
 		if (tm == m) {
-			/* cycle: degrade to a swap with the collision partner. The
-			 * partner keeps what it holds; m adopts its tagset, the
-			 * caller's view switch is skipped because the target view
-			 * would be m's own. */
-			Monitor *other = chain[depth - 1];
-
-			st_set_view(m, other->tagset[other->seltags] & TAGMASK);
-			goto done;
+			/* cycle: m already owns the tag we're trying to take. Nothing
+			 * to evict; the caller's view switch is a no-op. */
+			break;
 		}
 		chain[depth++] = tm;
 		oldset = tm->tagset[tm->seltags];
@@ -266,7 +261,6 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		tm = st_monitor_showing_tags(newtags, m);
 	}
 
-done:
 	/* migrate clients to the monitors displaying their tags */
 	st_migrate_clients(false);
 
@@ -295,8 +289,9 @@ void st_follow_client(Client *c) {
 	m = c->mon;
 	cur = m->tagset[m->seltags] & TAGMASK;
 	if (cur && !(c->tags & cur) && st_monitor_showing_tags(c->tags, m)) {
-		st_apply_view(m, c->tags & TAGMASK);
-		st_set_view(m, c->tags & TAGMASK);
+		/* Trigger a view switch to show the client's tags. Use the normal
+		 * slot-flip path to preserve tag history. */
+		client_view_on_monitor(&(Arg){.ui = c->tags}, false, m, false);
 	}
 }
 
