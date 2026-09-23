@@ -2874,6 +2874,10 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 
 		m->pertag->prevtag =
 			tmptag == m->pertag->curtag ? m->pertag->prevtag : tmptag;
+
+		if (config.single_tagset && !m->isoverview && (arg->ui & TAGMASK) &&
+			!(arg->ui & TAG0_MASK))
+			st_migrate_clients(false);
 	} else {
 		tmptag = m->pertag->prevtag;
 		m->pertag->prevtag = m->pertag->curtag;
