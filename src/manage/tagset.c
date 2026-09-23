@@ -355,11 +355,22 @@ uint32_t st_apply_view(Monitor *m, uint32_t newtags) {
 			arrange(chain[i], false, false);
 	}
 
-	/* focus may have pointed at a client that migrated away */
+	/* focus may have pointed at a client that migrated away. Recover the
+	 * initiator's focus without stealing the keyboard: client_focus() would
+	 * follow the candidate to its monitor and flip selected_monitor, which
+	 * makes the caller operate on the wrong monitor afterwards. */
 	if (m->sel && m->sel->mon != m)
 		m->sel = NULL;
-	if (server.selected_monitor == m && !m->sel)
-		m->sel = client_focus_top(m);
+	if (!m->sel) {
+		Client *fc = client_focus_top(m);
+		if (fc) {
+			if (m->sel && m->sel != fc)
+				m->sel->isfocusing = false;
+			m->sel = fc;
+			if (server.selected_monitor == m)
+				client_focus(fc, 0);
+		}
+	}
 
 	printstatus(IPC_WATCH_ARRANGGE);
 
