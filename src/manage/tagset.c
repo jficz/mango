@@ -108,16 +108,18 @@ uint32_t st_client_tags(const Client *c, const Monitor *m) {
 
 /* Eviction landing policies: pick the tagset an evicted monitor gets when
  * another monitor takes over its tags. blocked is the union of tagsets the
- * chain already occupies. */
+ * chain already occupies, init is the monitor initiating the takeover. */
 
 /* Land on the first tag displayed by no monitor (dwm singletagset style). */
-static uint32_t st_land_unused(const Monitor *m, uint32_t blocked) {
+static uint32_t st_land_unused(const Monitor *m, const Monitor *init,
+							   uint32_t blocked) {
 	return st_unused_tag();
 }
 
 /* Land on the tag the monitor displayed before its current one, if it is a
  * single regular tag nobody else in the chain displays; fall back to unused. */
-static uint32_t st_land_history(const Monitor *m, uint32_t blocked) {
+static uint32_t st_land_history(const Monitor *m, const Monitor *init,
+								uint32_t blocked) {
 	/* prevtag 0 is the special workspace: no regular tag behind it */
 	uint32_t hist = m->pertag && m->pertag->prevtag > 0
 						? (1u << (m->pertag->prevtag - 1))
@@ -129,17 +131,45 @@ static uint32_t st_land_history(const Monitor *m, uint32_t blocked) {
 	return st_unused_tag();
 }
 
-static uint32_t (*st_evict_policy)(const Monitor *m,
+/* Swap: land on the view the initiator displayed before it took our tags.
+ * The slot flip in client_view_on_monitor keeps that view in the initiator's
+ * inactive slot. Falls back to history, then unused, when the initiator has
+ * no usable previous view. */
+static uint32_t st_land_swap(const Monitor *m, const Monitor *init,
+							 uint32_t blocked) {
+	uint32_t prev;
+
+	if (init) {
+		/* the initiator's current view is what it is taking from us; its
+		 * inactive slot may hold anything (history toggle, stale copy), so
+		 * only swap when it is a single regular tag we do not display */
+		prev = init->tagset[init->seltags] & TAGMASK;
+		if (prev && !(prev & (prev - 1)) && !(prev & m->tagset[m->seltags]))
+			return prev;
+	}
+	return st_land_history(m, init, blocked);
+}
+
+static uint32_t (*st_evict_policy)(const Monitor *m, const Monitor *init,
 								   uint32_t blocked) = st_land_unused;
 
-void st_set_evict_policy(int32_t history) {
-	st_evict_policy = history ? st_land_history : st_land_unused;
+void st_set_evict_policy(int32_t mode) {
+	switch (mode) {
+	case ST_EVICT_SWAP:
+		st_evict_policy = st_land_swap;
+		break;
+	case ST_EVICT_HISTORY:
+		st_evict_policy = st_land_history;
+		break;
+	default:
+		st_evict_policy = st_land_unused;
+		break;
+	}
 }
 
 /* Move every regular client onto the monitor displaying its tags. Clients
- * whose tags nobody shows are left alone when adopt is false; otherwise they
- * adopt the view of their (or the selected) monitor. */
-void st_migrate_clients(bool adopt) {
+ * whose tags nobody shows are left alone. */
+void st_migrate_clients(uint32_t landing) {
 	Client *c;
 	Monitor *owner;
 
@@ -149,7 +179,7 @@ void st_migrate_clients(bool adopt) {
 			continue;
 		owner = st_monitor_showing_tags(c->tags, NULL);
 		if (!owner) {
-			if (!adopt)
+			if (!landing || !(c->tags & landing))
 				continue;
 			if (c->mon && st_active(c->mon)) {
 				client_set_tags(c, c->mon->tagset[c->mon->seltags]);
@@ -217,22 +247,25 @@ void st_rehome_clients(void) {
  * again (cycle), the operation degrades to a swap: m adopts the tagset of
  * the monitor it collided with, so the caller's view switch completes the
  * exchange. Clients follow their tags onto the new owners; clients keeping
- * no visible tag are reassigned to their tag owner. */
-void st_apply_view(Monitor *m, uint32_t newtags) {
+ * no visible tag are reassigned to their tag owner. Returns the tags evicted
+ * monitors landed on (landing tags): the caller must pass them to
+ * st_migrate_clients so clients homed there are pulled even when orphaned. */
+uint32_t st_apply_view(Monitor *m, uint32_t newtags) {
 	Monitor *chain[tag_num_MAX + 2];
 	Monitor *tm;
-	uint32_t blocked, taken, land, oldset;
+	uint32_t blocked, taken, landed, land, oldset;
 	int32_t depth, i;
 
 	if (!st_active(m) || !(newtags & TAGMASK))
-		return;
+		return 0;
 
 	tm = st_monitor_showing_tags(newtags, m);
 	if (!tm)
-		return; /* nothing to steal: plain local view switch */
+		return 0; /* nothing to steal: plain local view switch */
 
 	blocked = newtags & TAGMASK;
 	taken = tm->tagset[tm->seltags] & blocked;
+	landed = 0;
 	chain[0] = m;
 	depth = 1;
 
@@ -248,7 +281,7 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		}
 		chain[depth++] = tm;
 		oldset = tm->tagset[tm->seltags];
-		land = st_evict_policy(tm, blocked | taken) & TAGMASK;
+		land = st_evict_policy(tm, m, blocked | taken) & TAGMASK;
 		if (!land || (land & taken))
 			land = st_unused_tag();
 		/* keep the parts of its view the chain does not take */
@@ -257,12 +290,16 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		blocked |= oldset & TAGMASK;
 		taken |= land;
 		taken &= blocked;
+		landed |= land;
 
 		tm = st_monitor_showing_tags(newtags, m);
 	}
 
-	/* NOTE: migration happens after the caller writes the initiator's view,
-	 * because st_monitor_showing_tags must see the new ownership. */
+	/* NOTE: migration happens after the caller writes the initiator's view
+	 * (st_migrate_clients), because st_monitor_showing_tags must see the new
+	 * ownership: clients pulled onto landing tags (swap) move there then.
+	 * The caller must pass the returned landing tags to st_migrate_clients
+	 * so clients homed on them are pulled even when orphaned. */
 
 	/* arrange every monitor whose view or clients changed */
 	for (i = 0; i < depth; i++) {
@@ -277,6 +314,8 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		m->sel = client_focus_top(m);
 
 	printstatus(IPC_WATCH_ARRANGGE);
+
+	return landed;
 }
 
 void st_follow_client(Client *c) {

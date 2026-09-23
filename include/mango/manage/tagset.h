@@ -37,25 +37,31 @@ uint32_t st_client_tags(const Client *c, const Monitor *m);
 /* View transaction: give monitor m the tagset newtags, evicting other
  * monitors that display parts of it (see st_apply_view in tagset.c). No-op
  * when single_tagset is off or no other monitor holds any of newtags. */
-void st_apply_view(Monitor *m, uint32_t newtags);
+uint32_t st_apply_view(Monitor *m, uint32_t newtags);
 
 /* After re-tagging a client in place: if its tags moved to a monitor other
  * than c->mon and are invisible there, follow them with a view transaction.
  * No-op when single_tagset is off. */
 void st_follow_client(Client *c);
 
-/* Migrate clients to the monitors displaying their tags. When adopt is true,
- * orphan clients (tags shown by nobody) adopt the view of their current or
- * selected monitor; otherwise they stay put. */
-void st_migrate_clients(bool adopt);
+/* Migrate clients to the monitors displaying their tags. landing names
+ * extra tags to pull clients for even when no monitor displays them yet
+ * (swap targets, see st_apply_view). */
+void st_migrate_clients(uint32_t landing);
 
 /* True when c is displayed on its current monitor: equivalent to
  * VISIBLEON(c, c->mon), which honors the single tag set ownership rules. */
 bool st_client_shown(Client *c);
 
-/* Eviction landing policy: 0 = first unused tag, 1 = monitor's previous
- * tag when possible (chains degrade to swaps on cycles either way). */
-void st_set_evict_policy(int32_t history);
+enum {
+	ST_EVICT_UNUSED = 0,  /* evicted monitors land on the first unused tag */
+	ST_EVICT_HISTORY = 1, /* evicted monitors restore their previous tag */
+	ST_EVICT_SWAP = 2,	  /* evicted monitors take the initiator's old view */
+};
+
+/* Eviction landing policy (see ST_EVICT_* values). Unknown values behave
+ * like ST_EVICT_UNUSED. */
+void st_set_evict_policy(int32_t mode);
 
 /* Re-home clients after monitors joined/left (hotplug, disable, close). */
 void st_rehome_clients(void);
