@@ -2852,17 +2852,6 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 		 * view is switched by the slot flip below, which keeps the tag
 		 * history intact */
 		st_apply_view(m, arg->ui & TAGMASK);
-		if ((m->tagset[m->seltags] & TAGMASK) == (arg->ui & TAGMASK)) {
-			/* cycle degraded to a swap: m already adopted the partner's
-			 * tagset and the partner kept it, so the requested view is
-			 * m's own. Flipping would undo the swap and resurrect the
-			 * duplicate, so keep the history slot untouched */
-			if (changefocus)
-				client_focus(client_focus_top(m), 1);
-			arrange(m, false, true);
-			printstatus(IPC_WATCH_ARRANGGE);
-			return;
-		}
 	}
 
 	m->seltags ^= 1; /* toggle sel tagset */
