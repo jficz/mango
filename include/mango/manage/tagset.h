@@ -36,7 +36,10 @@ uint32_t st_client_tags(const Client *c, const Monitor *m);
 
 /* View transaction: give monitor m the tagset newtags, evicting other
  * monitors that display parts of it (see st_apply_view in tagset.c). No-op
- * when single_tagset is off or no other monitor holds any of newtags. */
+ * when single_tagset is off or no other monitor holds any of newtags. Does
+ * NOT switch m's view: the caller writes it, then passes the returned
+ * landing tags (what the evicted monitors landed on) to
+ * st_migrate_clients and arranges every touched monitor. */
 uint32_t st_apply_view(Monitor *m, uint32_t newtags);
 
 /* After re-tagging a client in place: if its tags moved to a monitor other
@@ -62,6 +65,11 @@ enum {
 /* Eviction landing policy (see ST_EVICT_* values). Unknown values behave
  * like ST_EVICT_UNUSED. */
 void st_set_evict_policy(int32_t mode);
+
+/* Arrange every active monitor except skip: needed after a view
+ * transaction, whose clients may land on other monitors' new tags while
+ * callers typically only arrange the initiator. */
+void st_arrange_others(const Monitor *skip, bool want_animation);
 
 /* Re-home clients after monitors joined/left (hotplug, disable, close). */
 void st_rehome_clients(void);

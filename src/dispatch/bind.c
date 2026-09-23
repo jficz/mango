@@ -1894,7 +1894,6 @@ int32_t toggle_view(const Arg *arg) {
 	uint32_t newtagset;
 	uint32_t target;
 	uint32_t landed;
-	Monitor *tm;
 	Client *c = NULL;
 
 	target = arg->ui == 0 ? ~0 & TAGMASK : arg->ui;
@@ -1912,14 +1911,10 @@ int32_t toggle_view(const Arg *arg) {
 		server.selected_monitor->tagset[server.selected_monitor->seltags] =
 			newtagset;
 		st_migrate_clients(landed);
-		if (landed) {
-			/* clients landed on other monitors' new tags: lay them out
-			 * there too, the caller only arranges the initiator */
-			wl_list_for_each(tm, &server.monitors, link) {
-				if (tm != server.selected_monitor && tm->wlr_output->enabled)
-					arrange(tm, false, false);
-			}
-		}
+		/* clients landed on other monitors' new tags: lay them out there
+		 * too, this function only arranges the initiator */
+		if (landed)
+			st_arrange_others(server.selected_monitor, false);
 	} else {
 		newtagset =
 			server.selected_monitor->tagset[server.selected_monitor->seltags] ^
@@ -2182,7 +2177,6 @@ int32_t tag_cross_monitor(const Arg *arg) {
 int32_t combo_view(const Arg *arg) {
 	uint32_t newtags = arg->ui & TAGMASK;
 	uint32_t landed = 0;
-	Monitor *tm;
 
 	if (!newtags || !server.selected_monitor)
 		return 0;
@@ -2205,12 +2199,8 @@ int32_t combo_view(const Arg *arg) {
 			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
 				newtags;
 		}
-		if (landed) {
-			wl_list_for_each(tm, &server.monitors, link) {
-				if (tm != server.selected_monitor && tm->wlr_output->enabled)
-					arrange(tm, false, false);
-			}
-		}
+		if (landed)
+			st_arrange_others(server.selected_monitor, false);
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		arrange(server.selected_monitor, false, false);
 	} else {
