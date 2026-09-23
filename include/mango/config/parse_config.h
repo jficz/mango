@@ -365,8 +365,8 @@ typedef struct {
 	int32_t tag_num;	   // Configurable tag count, range 1..tag_num_MAX.
 	int32_t tag_gather;	   // Compact tags to remove gaps
 	int32_t single_tagset; // All monitors share one global tag set
-	int32_t single_tagset_evict_history; // Evicted monitors restore their
-										 // previous tag when possible
+	int32_t single_tagset_evict; // Eviction landing policy for evicted
+								 // monitors (ST_EVICT_* values)
 	int32_t center_master_overspread;
 	int32_t center_when_single_stack;
 

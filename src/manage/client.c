@@ -2821,7 +2821,8 @@ void client_active(Client *c) {
 
 void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 							bool changefocus) {
-	uint32_t i, tmptag;
+	uint32_t i, tmptag, landed = 0;
+	Monitor *tm;
 
 	if (!m || (arg->ui != (~0 & TAGMASK) && m->isoverview)) {
 		return;
@@ -2851,7 +2852,7 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 		/* evict other monitors off the tags we are about to take. m's own
 		 * view is switched by the slot flip below, which keeps the tag
 		 * history intact */
-		st_apply_view(m, arg->ui & TAGMASK);
+		landed = st_apply_view(m, arg->ui & TAGMASK);
 	}
 
 	m->seltags ^= 1; /* toggle sel tagset */
@@ -2877,7 +2878,7 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 
 		if (config.single_tagset && !m->isoverview && (arg->ui & TAGMASK) &&
 			!(arg->ui & TAG0_MASK))
-			st_migrate_clients(false);
+			st_migrate_clients(landed);
 	} else {
 		tmptag = m->pertag->prevtag;
 		m->pertag->prevtag = m->pertag->curtag;
@@ -2885,6 +2886,15 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 	}
 
 toggleseltags:
+
+	if (landed) {
+		/* clients landed on other monitors' new tags: lay them out there
+		 * too, this function only arranges m */
+		wl_list_for_each(tm, &server.monitors, link) {
+			if (tm != m && tm->wlr_output->enabled)
+				arrange(tm, want_animation, false);
+		}
+	}
 
 	if (changefocus)
 		client_focus(client_focus_top(m), 1);
@@ -2972,6 +2982,7 @@ void show_hide_client(Client *c) {
 void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 	Monitor *oldmon = c->mon;
 	Monitor *owner;
+	uint32_t landed = 0;
 
 	if (oldmon == m)
 		return;
@@ -2991,7 +3002,7 @@ void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 				if (oldmon == m)
 					return;
 			} else if (!(newtags & m->tagset[m->seltags])) {
-				st_apply_view(m, newtags & TAGMASK);
+				landed = st_apply_view(m, newtags & TAGMASK);
 			}
 		}
 	}
@@ -3005,6 +3016,11 @@ void client_set_monitor(Client *c, Monitor *m, uint32_t newtags, bool focus) {
 	}
 
 	c->mon = m;
+
+	/* the view transaction above may have moved other monitors: pull the
+	 * clients homed on their landing tags along with the tags */
+	if (landed)
+		st_migrate_clients(landed);
 
 	/* Scene graph sends surface leave/enter events on move and resize */
 	if (oldmon)

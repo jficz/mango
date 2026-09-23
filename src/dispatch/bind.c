@@ -1893,6 +1893,8 @@ int32_t toggle_view(const Arg *arg) {
 
 	uint32_t newtagset;
 	uint32_t target;
+	uint32_t landed;
+	Monitor *tm;
 	Client *c = NULL;
 
 	target = arg->ui == 0 ? ~0 & TAGMASK : arg->ui;
@@ -1906,10 +1908,18 @@ int32_t toggle_view(const Arg *arg) {
 		newtagset &= ~st_other_used_tagset(server.selected_monitor);
 		if (!newtagset)
 			return 0;
-		st_apply_view(server.selected_monitor, newtagset);
+		landed = st_apply_view(server.selected_monitor, newtagset);
 		server.selected_monitor->tagset[server.selected_monitor->seltags] =
 			newtagset;
-		st_migrate_clients(false);
+		st_migrate_clients(landed);
+		if (landed) {
+			/* clients landed on other monitors' new tags: lay them out
+			 * there too, the caller only arranges the initiator */
+			wl_list_for_each(tm, &server.monitors, link) {
+				if (tm != server.selected_monitor && tm->wlr_output->enabled)
+					arrange(tm, false, false);
+			}
+		}
 	} else {
 		newtagset =
 			server.selected_monitor->tagset[server.selected_monitor->seltags] ^
@@ -2171,6 +2181,8 @@ int32_t tag_cross_monitor(const Arg *arg) {
 
 int32_t combo_view(const Arg *arg) {
 	uint32_t newtags = arg->ui & TAGMASK;
+	uint32_t landed = 0;
+	Monitor *tm;
 
 	if (!newtags || !server.selected_monitor)
 		return 0;
@@ -2180,17 +2192,24 @@ int32_t combo_view(const Arg *arg) {
 			newtags &= ~st_other_used_tagset(server.selected_monitor);
 			if (!newtags)
 				return 0;
-			st_apply_view(server.selected_monitor,
-						  (server.selected_monitor
-							   ->tagset[server.selected_monitor->seltags] &
-						   TAGMASK) |
-							  newtags);
+			landed =
+				st_apply_view(server.selected_monitor,
+							  (server.selected_monitor
+								   ->tagset[server.selected_monitor->seltags] &
+							   TAGMASK) |
+								  newtags);
 			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
 				newtags;
-			st_migrate_clients(false);
+			st_migrate_clients(landed);
 		} else {
 			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
 				newtags;
+		}
+		if (landed) {
+			wl_list_for_each(tm, &server.monitors, link) {
+				if (tm != server.selected_monitor && tm->wlr_output->enabled)
+					arrange(tm, false, false);
+			}
 		}
 		client_focus(client_focus_top(server.selected_monitor), 1);
 		arrange(server.selected_monitor, false, false);
@@ -2281,6 +2300,7 @@ static void set_overview(const Arg *arg, bool enter) {
 	Client *c = NULL;
 	Client *sel = arg->tc ? arg->tc : server.selected_monitor->sel;
 	uint32_t target = 0;
+	uint32_t landed = 0;
 	uint32_t visible_client_number = 0;
 	bool only_current = arg->i == 1;
 	uint32_t current_tags = 0;
@@ -2368,12 +2388,12 @@ static void set_overview(const Arg *arg, bool enter) {
 			!(target & TAG0_MASK)) {
 			/* the exit target may be owned by another monitor (clients
 			 * keep raw tags under the single tag set): take it over */
-			st_apply_view(server.selected_monitor, target & TAGMASK);
+			landed = st_apply_view(server.selected_monitor, target & TAGMASK);
 		}
 		server.selected_monitor->tagset[server.selected_monitor->seltags] =
 			target;
 		if (config.single_tagset && (target & TAGMASK) && !(target & TAG0_MASK))
-			st_migrate_clients(false);
+			st_migrate_clients(landed);
 		wl_list_for_each(c, &server.clients, link) {
 			if (c && c->mon == server.selected_monitor && !c->iskilling &&
 				!client_is_unmanaged(c) && !c->isunglobal && !c->isminimized &&

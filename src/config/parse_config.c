@@ -838,8 +838,8 @@ bool parse_option(Config *config, char *key, char *value, int line_number) {
 		config->tag_gather = atoi(value);
 	} else if (strcmp(key, "single_tagset") == 0) {
 		config->single_tagset = atoi(value);
-	} else if (strcmp(key, "single_tagset_evict_history") == 0) {
-		config->single_tagset_evict_history = atoi(value);
+	} else if (strcmp(key, "single_tagset_evict") == 0) {
+		config->single_tagset_evict = atoi(value);
 	} else if (strcmp(key, "center_master_overspread") == 0) {
 		config->center_master_overspread = atoi(value);
 	} else if (strcmp(key, "center_when_single_stack") == 0) {
@@ -3831,9 +3831,9 @@ void override_config(void) {
 				"single_tagset: disabling tag_gather\n");
 		config.tag_gather = 0;
 	}
-	config.single_tagset_evict_history =
-		CLAMP_INT(config.single_tagset_evict_history, 0, 1);
-	st_set_evict_policy(config.single_tagset_evict_history);
+	config.single_tagset_evict =
+		CLAMP_INT(config.single_tagset_evict, ST_EVICT_UNUSED, ST_EVICT_SWAP);
+	st_set_evict_policy(config.single_tagset_evict);
 	config.center_master_overspread =
 		CLAMP_INT(config.center_master_overspread, 0, 1);
 	config.center_when_single_stack =
@@ -4060,7 +4060,7 @@ void set_value_default() {
 	config.tag_num = 9;
 	config.tag_gather = 0;
 	config.single_tagset = 0;
-	config.single_tagset_evict_history = 0;
+	config.single_tagset_evict = ST_EVICT_UNUSED;
 	config.center_master_overspread = 0;
 	config.center_when_single_stack = 1;
 
