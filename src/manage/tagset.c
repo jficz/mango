@@ -288,10 +288,16 @@ void st_follow_client(Client *c) {
 
 	m = c->mon;
 	cur = m->tagset[m->seltags] & TAGMASK;
-	if (cur && !(c->tags & cur) && st_monitor_showing_tags(c->tags, m)) {
-		/* Trigger a view switch to show the client's tags. Use the normal
-		 * slot-flip path to preserve tag history. */
-		client_view_on_monitor(&(Arg){.ui = c->tags}, false, m, false);
+	if (cur && !(c->tags & cur)) {
+		Monitor *owner = st_monitor_showing_tags(c->tags, m);
+		if (owner) {
+			/* Another monitor displays the client's tags: move the client
+			 * there, don't switch this monitor's view */
+			client_set_monitor(c, owner, 0, false);
+		} else {
+			/* Nobody displays the tags: bring them here via view switch */
+			client_view_on_monitor(&(Arg){.ui = c->tags}, false, m, false);
+		}
 	}
 }
 
