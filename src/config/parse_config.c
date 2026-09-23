@@ -4790,7 +4790,7 @@ void reset_tag(int old_tag_num) {
 			sync_workspaces_to_tag_num(m);
 		}
 
-		if (config.single_tagset) {
+		if (config.single_tagset && config.tag_num < old_tag_num) {
 			/* shrinking tag_num can collapse several monitors onto the
 			 * last tag; st_rehome_clients resolves duplicate views and
 			 * re-homes the affected clients */
