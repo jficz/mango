@@ -108,8 +108,9 @@ uint32_t st_client_tags(const Client *c, const Monitor *m) {
 /* ------------------------- view planning ------------------------------- */
 
 /* Eviction landing policies: pick the tagset an evicted monitor gets when
- * another monitor takes over its tags. blocked is the union of tagsets the
- * chain already occupies, init is the monitor initiating the takeover. */
+ * another monitor takes over its tags. Uniform signature: blocked is the
+ * union of tagsets the chain already occupies, init is the monitor
+ * initiating the takeover; not every policy uses both. */
 
 /* Land on the first tag displayed by no monitor (dwm singletagset style). */
 static uint32_t st_land_unused(const Monitor *m, const Monitor *init,
@@ -208,6 +209,31 @@ static bool st_returning_to(const Monitor *m, uint32_t tagbit) {
 		   (m->tagset[m->seltags ^ 1] & TAGMASK) == tagbit;
 }
 
+/* Drop sel pointers that no longer match the client's home monitor and
+ * refill empty ones. Called after every state change that can move clients
+ * or views: view writes and migrations invalidate previous repairs. */
+static void st_repair_focus(void) {
+	Monitor *m;
+
+	wl_list_for_each(m, &server.monitors, link) {
+		if (!st_active(m))
+			continue;
+		if (m->sel && m->sel->mon != m)
+			m->sel = NULL;
+		if (!m->sel)
+			m->sel = client_focus_top(m);
+	}
+}
+
+void st_arrange_others(const Monitor *skip, bool want_animation) {
+	Monitor *m;
+
+	wl_list_for_each(m, &server.monitors, link) {
+		if (m != skip && st_active(m))
+			arrange(m, want_animation, false);
+	}
+}
+
 void st_rehome_clients(void) {
 	Monitor *tm, *other;
 	uint32_t seen, dup;
@@ -259,27 +285,16 @@ void st_rehome_clients(void) {
 		}
 
 		/* views changed: repair focus before the next round reads sel */
-		wl_list_for_each(other, &server.monitors, link) {
-			if (!st_active(other))
-				continue;
-			if (other->sel && other->sel->mon != other)
-				other->sel = NULL;
-			if (!other->sel)
-				other->sel = client_focus_top(other);
-		}
+		st_repair_focus();
 	}
 
 	st_migrate_clients(0);
 
+	st_repair_focus();
+
 	wl_list_for_each(tm, &server.monitors, link) {
-		if (!st_active(tm))
-			continue;
-		/* focus may point at a client that moved to another monitor */
-		if (tm->sel && tm->sel->mon != tm)
-			tm->sel = NULL;
-		if (!tm->sel)
-			tm->sel = client_focus_top(tm);
-		arrange(tm, false, false);
+		if (st_active(tm))
+			arrange(tm, false, false);
 	}
 
 	/* callers may only arrange the selected monitor: notify every watcher

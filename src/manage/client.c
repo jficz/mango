@@ -2822,7 +2822,6 @@ void client_active(Client *c) {
 void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 							bool changefocus) {
 	uint32_t i, tmptag, landed = 0;
-	Monitor *tm;
 
 	if (!m || (arg->ui != (~0 & TAGMASK) && m->isoverview)) {
 		return;
@@ -2887,14 +2886,10 @@ void client_view_on_monitor(const Arg *arg, bool want_animation, Monitor *m,
 
 toggleseltags:
 
-	if (landed) {
-		/* clients landed on other monitors' new tags: lay them out there
-		 * too, this function only arranges m */
-		wl_list_for_each(tm, &server.monitors, link) {
-			if (tm != m && tm->wlr_output->enabled)
-				arrange(tm, want_animation, false);
-		}
-	}
+	/* clients landed on other monitors' new tags: lay them out there too,
+	 * this function only arranges m */
+	if (landed)
+		st_arrange_others(m, want_animation);
 
 	if (changefocus)
 		client_focus(client_focus_top(m), 1);
