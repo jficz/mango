@@ -1897,28 +1897,36 @@ int32_t toggle_view(const Arg *arg) {
 
 	target = arg->ui == 0 ? ~0 & TAGMASK : arg->ui;
 
-	newtagset =
-		server.selected_monitor->tagset[server.selected_monitor->seltags] ^
-		(target & TAGMASK);
-
-	if (newtagset) {
-		if (config.single_tagset && !server.selected_monitor->isoverview &&
-			!(is_special_active(server.selected_monitor))) {
-			newtagset &= ~st_other_used_tagset(server.selected_monitor);
-			if (!newtagset)
-				return 0;
-			st_apply_view(server.selected_monitor, newtagset);
-		}
+	if (config.single_tagset && !server.selected_monitor->isoverview &&
+		!(is_special_active(server.selected_monitor)) && (target & TAGMASK) &&
+		!(target & TAG0_MASK)) {
+		/* Under single_tagset, switching to a specific tag replaces the
+		 * current view rather than XOR-ing. Evict other monitors first. */
+		newtagset = target & TAGMASK;
+		newtagset &= ~st_other_used_tagset(server.selected_monitor);
+		if (!newtagset)
+			return 0;
+		st_apply_view(server.selected_monitor, newtagset);
 		server.selected_monitor->tagset[server.selected_monitor->seltags] =
 			newtagset;
-		client_focus(client_focus_top(server.selected_monitor), 1);
-		wl_list_for_each(c, &server.clients, link) {
-			if (VISIBLEON(c, server.selected_monitor) && ISTILED(c)) {
-				set_size_per(server.selected_monitor, c);
-			}
+		st_migrate_clients(false);
+	} else {
+		newtagset =
+			server.selected_monitor->tagset[server.selected_monitor->seltags] ^
+			(target & TAGMASK);
+
+		if (newtagset) {
+			server.selected_monitor->tagset[server.selected_monitor->seltags] =
+				newtagset;
 		}
-		arrange(server.selected_monitor, false, false);
 	}
+	client_focus(client_focus_top(server.selected_monitor), 1);
+	wl_list_for_each(c, &server.clients, link) {
+		if (VISIBLEON(c, server.selected_monitor) && ISTILED(c)) {
+			set_size_per(server.selected_monitor, c);
+		}
+	}
+	arrange(server.selected_monitor, false, false);
 	printstatus(IPC_WATCH_ARRANGGE);
 	return 0;
 }
@@ -2179,6 +2187,7 @@ int32_t combo_view(const Arg *arg) {
 							  newtags);
 			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
 				newtags;
+			st_migrate_clients(false);
 		} else {
 			server.selected_monitor->tagset[server.selected_monitor->seltags] |=
 				newtags;
@@ -2363,6 +2372,8 @@ static void set_overview(const Arg *arg, bool enter) {
 		}
 		server.selected_monitor->tagset[server.selected_monitor->seltags] =
 			target;
+		if (config.single_tagset && (target & TAGMASK) && !(target & TAG0_MASK))
+			st_migrate_clients(false);
 		wl_list_for_each(c, &server.clients, link) {
 			if (c && c->mon == server.selected_monitor && !c->iskilling &&
 				!client_is_unmanaged(c) && !c->isunglobal && !c->isminimized &&

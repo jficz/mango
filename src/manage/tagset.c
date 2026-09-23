@@ -139,7 +139,7 @@ void st_set_evict_policy(int32_t history) {
 /* Move every regular client onto the monitor displaying its tags. Clients
  * whose tags nobody shows are left alone when adopt is false; otherwise they
  * adopt the view of their (or the selected) monitor. */
-static void st_migrate_clients(bool adopt) {
+void st_migrate_clients(bool adopt) {
 	Client *c;
 	Monitor *owner;
 
@@ -261,8 +261,8 @@ void st_apply_view(Monitor *m, uint32_t newtags) {
 		tm = st_monitor_showing_tags(newtags, m);
 	}
 
-	/* migrate clients to the monitors displaying their tags */
-	st_migrate_clients(false);
+	/* NOTE: migration happens after the caller writes the initiator's view,
+	 * because st_monitor_showing_tags must see the new ownership. */
 
 	/* arrange every monitor whose view or clients changed */
 	for (i = 0; i < depth; i++) {

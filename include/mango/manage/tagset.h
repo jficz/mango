@@ -44,6 +44,11 @@ void st_apply_view(Monitor *m, uint32_t newtags);
  * No-op when single_tagset is off. */
 void st_follow_client(Client *c);
 
+/* Migrate clients to the monitors displaying their tags. When adopt is true,
+ * orphan clients (tags shown by nobody) adopt the view of their current or
+ * selected monitor; otherwise they stay put. */
+void st_migrate_clients(bool adopt);
+
 /* True when c is displayed on its current monitor: equivalent to
  * VISIBLEON(c, c->mon), which honors the single tag set ownership rules. */
 bool st_client_shown(Client *c);
